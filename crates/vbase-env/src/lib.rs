@@ -1,14 +1,228 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use std::io::{ErrorKind, Result};
+
+/// A system environment.
+pub trait Env: Send + Sync {
+    /// Opens a directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn open_dir(&self, name: &str) -> Result<Box<dyn Dir>>;
+
+    /// Creates a directory if it does not exist.
+    ///
+    /// This function creates parent directories as needed.
+    ///
+    /// Returns the original directory if `name` already exists.
+    fn create_dir(&self, name: &str) -> Result<Box<dyn Dir>>;
+
+    /// Deletes a directory, after deleting all its entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn delete_dir(&self, name: &str) -> Result<()>;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// A directory in the environment.
+pub trait Dir: Send + Sync {
+    /// Returns the names of all entries.
+    fn list(&self) -> Result<Vec<String>>;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    /// Opens a directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn open_dir(&self, name: &str) -> Result<Box<dyn Dir>>;
+
+    /// Creates a directory if it does not exist.
+    ///
+    /// This function creates parent directories as needed.
+    ///
+    /// Returns the original directory if `name` already exists.
+    fn create_dir(&self, name: &str) -> Result<Box<dyn Dir>>;
+
+    /// Deletes a directory, after deleting all its entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn delete_dir(&self, name: &str) -> Result<()>;
+
+    /// Locks a file.
+    ///
+    /// This function creates a file if `name` does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::WouldBlock`] if `name` is already
+    /// locked.
+    fn lock_file(&self, name: &str) -> Result<Box<dyn LockedFile>>;
+
+    /// Reads all data from a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn read_file(&self, name: &str) -> Result<Vec<u8>>;
+
+    /// Writes `data` as the entire content of a file.
+    ///
+    /// This function creates a file if `name` does not exist.
+    fn write_file(&self, name: &str, data: &[u8]) -> Result<()>;
+
+    /// Deletes a file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn delete_file(&self, name: &str) -> Result<()>;
+
+    /// Renames a file.
+    ///
+    /// This function replaces the original file if `to` already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `from` does not exist.
+    fn rename_file(&self, from: &str, to: &str) -> Result<()>;
+
+    /// Opens a file for positional reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn open_positional_file(&self, name: &str) -> Result<Box<dyn PositionalFile>>;
+
+    /// Opens a file for sequential reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error with [`ErrorKind::NotFound`] if `name` does not exist.
+    fn open_sequential_file(&self, name: &str) -> Result<Box<dyn SequentialFile>>;
+
+    /// Creates a file for sequential writes.
+    ///
+    /// This function truncates the original file if `name` already exists.
+    fn create_sequential_file(&self, name: &str) -> Result<Box<dyn SequentialFileWriter>>;
+}
+
+/// A locked file.
+///
+/// Dropping the locked file releases the lock.
+pub trait LockedFile {}
+
+/// A file opened for positional reads.
+pub trait PositionalFile {
+    /// Reads some bytes into `buf` from the file at `offset`.
+    ///
+    /// Returns the number of bytes read.
+    fn read(&self, buf: &mut [u8], offset: u64) -> Result<usize>;
+
+    /// Reads the exact number of bytes to fill `buf` from the file at `offset`.
+    fn read_exact(&self, buf: &mut [u8], mut offset: u64) -> Result<()> {
+        let mut len = 0;
+        while len < buf.len() {
+            match self.read(&mut buf[len..], offset) {
+                Ok(0) => return Err(ErrorKind::UnexpectedEof.into()),
+                Ok(n) => {
+                    len += n;
+                    offset += n as u64;
+                }
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl PositionalFile for Box<dyn PositionalFile> {
+    fn read(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+        (**self).read(buf, offset)
+    }
+}
+
+/// A file opened for sequential reads.
+pub trait SequentialFile {
+    /// Reads some bytes into `buf` from the file.
+    ///
+    /// Returns the number of bytes read.
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
+
+    /// Reads the exact number of bytes to fill `buf` from the file.
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        let len = self.read_exact_until_end(buf)?;
+        if len == buf.len() {
+            Ok(())
+        } else {
+            Err(ErrorKind::UnexpectedEof.into())
+        }
+    }
+
+    /// Reads the exact number of bytes to fill `buf` from the file,
+    /// or until the end of the file.
+    ///
+    /// Returns the number of bytes read.
+    fn read_exact_until_end(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let mut len = 0;
+        while len < buf.len() {
+            match self.read(&mut buf[len..]) {
+                Ok(0) => return Ok(len),
+                Ok(n) => len += n,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(len)
+    }
+}
+
+impl SequentialFile for Box<dyn SequentialFile> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        (**self).read(buf)
+    }
+}
+
+/// A file opened for sequential writes.
+pub trait SequentialFileWriter {
+    /// Synchronizes all data to the file.
+    fn sync(&mut self) -> Result<()>;
+
+    /// Writes some bytes from `buf` to the file.
+    ///
+    /// Returns the number of bytes written.
+    fn write(&mut self, buf: &[u8]) -> Result<usize>;
+
+    /// Writes the exact number of bytes from `buf` to the file.
+    fn write_exact(&mut self, buf: &[u8]) -> Result<()> {
+        let mut len = 0;
+        while len < buf.len() {
+            match self.write(&buf[len..]) {
+                Ok(0) => return Err(ErrorKind::WriteZero.into()),
+                Ok(n) => len += n,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns the current file offset.
+    fn offset(&self) -> u64;
+}
+
+impl SequentialFileWriter for Box<dyn SequentialFileWriter> {
+    fn sync(&mut self) -> Result<()> {
+        (**self).sync()
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        (**self).write(buf)
+    }
+
+    fn offset(&self) -> u64 {
+        (**self).offset()
     }
 }
