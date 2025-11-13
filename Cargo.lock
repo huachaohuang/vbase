@@ -104,6 +104,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vbase-util"
+version = "0.1.0"
+
+[[package]]
 name = "wasip2"
 version = "1.0.1+wasi-0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
