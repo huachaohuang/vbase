@@ -1,5 +1,8 @@
 use std::io::{ErrorKind, Result};
 
+mod test;
+pub use test::{TestDir, TestEnv};
+
 mod mock;
 pub use mock::{MockDir, MockEnv};
 

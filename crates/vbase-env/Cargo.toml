@@ -9,7 +9,10 @@ repository.workspace = true
 description.workspace = true
 rust-version.workspace = true
 
-[dependencies]
-
 [lints]
 workspace = true
+
+[dependencies]
+
+[target."cfg(not(miri))".dependencies]
+tempfile = "3.23.0"
