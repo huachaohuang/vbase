@@ -186,6 +186,10 @@ dependencies = [
 [[package]]
 name = "vbase-tree"
 version = "0.1.0"
+dependencies = [
+ "vbase-env",
+ "vbase-file",
+]
 
 [[package]]
 name = "vbase-util"

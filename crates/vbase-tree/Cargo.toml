@@ -13,3 +13,5 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+vbase-env.workspace = true
+vbase-file.workspace = true

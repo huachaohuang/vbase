@@ -1,14 +1,49 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use vbase_env::Dir;
+use vbase_file::Result;
+
+pub struct Tree {
+    dir: Box<dyn Dir>,
+    options: Options,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Tree {
+    pub fn open(dir: Box<dyn Dir>, options: Options) -> Result<Self> {
+        Ok(Self { dir, options })
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn get(&self, id: &[u8], lsn: u64, options: &ReadOptions) -> Result<Option<()>> {
+        todo!()
+    }
+
+    pub fn write(&self, batch: &[u8], lsn: u64) {
+        todo!()
+    }
+}
+
+pub struct Options;
+
+pub struct ReadOptions {
+    pub cache: bool,
+}
+
+pub struct WriteBatch;
+
+impl WriteBatch {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn put(&mut self, id: &[u8], value: &[u8]) {
+        todo!()
+    }
+
+    pub fn delete(&mut self, id: &[u8]) {
+        todo!()
+    }
+}
+
+impl AsRef<[u8]> for WriteBatch {
+    fn as_ref(&self) -> &[u8] {
+        todo!()
     }
 }
