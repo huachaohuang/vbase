@@ -113,6 +113,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vbase-file"
+version = "0.1.0"
+
+[[package]]
 name = "vbase-util"
 version = "0.1.0"
 dependencies = [
