@@ -24,4 +24,5 @@ print_stderr = "warn"
 [workspace.dependencies]
 vbase-env = { path = "crates/vbase-env", version = "0.1.0" }
 vbase-file = { path = "crates/vbase-file", version = "0.1.0" }
+vbase-tree = { path = "crates/vbase-tree", version = "0.1.0" }
 vbase-util = { path = "crates/vbase-util", version = "0.1.0" }
