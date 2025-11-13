@@ -5,3 +5,7 @@ version = 4
 [[package]]
 name = "vbase"
 version = "0.1.0"
+
+[[package]]
+name = "vbase-env"
+version = "0.1.0"
