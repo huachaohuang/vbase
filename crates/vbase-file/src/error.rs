@@ -3,7 +3,6 @@ use std::io;
 use thiserror::Error;
 
 /// Errors for file operations.
-#[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{context}: {source}")]
