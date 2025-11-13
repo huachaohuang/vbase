@@ -1,5 +1,8 @@
 use std::io::{ErrorKind, Result};
 
+mod local;
+pub use local::{LocalDir, LocalEnv};
+
 /// A system environment.
 pub trait Env: Send + Sync {
     /// Opens a directory.
