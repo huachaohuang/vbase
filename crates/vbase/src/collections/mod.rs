@@ -1,13 +1,33 @@
 pub mod tree;
 pub use tree::Tree;
 
+/// A list of supported collection kinds.
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Kind {
+    Tree = 1,
+}
+
+#[doc(hidden)]
+impl From<u32> for Kind {
+    fn from(value: u32) -> Self {
+        match value {
+            1 => Self::Tree,
+            _ => panic!("invalid collection kind: {}", value),
+        }
+    }
+}
+
+/// A list of supported collection options.
+#[non_exhaustive]
 pub enum Options {
     Tree(tree::Options),
 }
 
 impl From<tree::Options> for Options {
     fn from(options: tree::Options) -> Self {
-        Options::Tree(options)
+        Self::Tree(options)
     }
 }
 
@@ -22,28 +42,22 @@ impl Collection for Tree {
     type WriteBatch = tree::WriteBatch;
 }
 
+/// Information about a collection.
+#[non_exhaustive]
+#[derive(Clone, Debug)]
+pub struct CollectionInfo {
+    pub id: u64,
+    pub name: String,
+    pub kind: Kind,
+}
+
 pub(crate) mod private {
     use vbase_env::Dir;
 
-    use super::Options;
     use super::tree::{Tree, TreeHandle};
+    use super::{Kind, Options};
     use crate::database::Database;
     use crate::error::Result;
-
-    #[repr(u32)]
-    #[derive(Copy, Clone, Eq, PartialEq)]
-    pub(crate) enum Kind {
-        Tree = 1,
-    }
-
-    impl From<u32> for Kind {
-        fn from(value: u32) -> Self {
-            match value {
-                1 => Kind::Tree,
-                _ => panic!("invalid collection kind: {}", value),
-            }
-        }
-    }
 
     #[derive(Clone)]
     pub(crate) enum Handle {
@@ -53,7 +67,7 @@ pub(crate) mod private {
     impl Handle {
         pub(crate) fn open(dir: Box<dyn Dir>, options: Options) -> Result<Self> {
             match options {
-                Options::Tree(options) => TreeHandle::open(dir, options).map(Handle::Tree),
+                Options::Tree(options) => TreeHandle::open(dir, options).map(Self::Tree),
             }
         }
 
@@ -77,10 +91,7 @@ pub(crate) mod private {
     }
 
     impl Collection for Tree {
-        fn open(db: Database, handle: Handle) -> Result<Self>
-        where
-            Self: Sized,
-        {
+        fn open(db: Database, handle: Handle) -> Result<Self> {
             match handle {
                 Handle::Tree(handle) => Ok(Self::open(db, handle)),
             }

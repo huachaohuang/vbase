@@ -16,7 +16,7 @@ pub(crate) struct FileSet {
 pub(crate) struct RootDir {
     dir: Box<dyn Dir>,
     name: String,
-    lock: Box<dyn LockedFile>,
+    lock: Option<Box<dyn LockedFile>>,
 }
 
 impl RootDir {
@@ -24,11 +24,23 @@ impl RootDir {
     const TEMP: &str = "TEMP";
     const CURRENT: &str = "CURRENT";
 
+    pub(crate) fn new(dir: Box<dyn Dir>, name: String) -> Self {
+        Self {
+            dir,
+            name,
+            lock: None,
+        }
+    }
+
     pub(crate) fn lock(dir: Box<dyn Dir>, name: String) -> Result<Self> {
         let lock = dir
             .lock_file(Self::LOCK)
             .map_err(|e| Error::io(e, format!("lock {}", Self::LOCK)))?;
-        Ok(Self { dir, name, lock })
+        Ok(Self {
+            dir,
+            name,
+            lock: Some(lock),
+        })
     }
 
     pub(crate) fn name(&self) -> &str {

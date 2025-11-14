@@ -9,7 +9,9 @@ use vbase_env::{Env, LocalEnv};
 use vbase_file::{JournalFile, JournalFileWriter};
 
 use crate::collections::private::Handle as CollectionHandle;
-use crate::collections::{Collection, Options as CollectionOptions};
+use crate::collections::{
+    Collection, CollectionInfo, Kind as CollectionKind, Options as CollectionOptions,
+};
 use crate::error::{Error, Result};
 use crate::manifest::{CollectionDesc, Desc, Edit};
 use crate::root::RootDir;
@@ -109,6 +111,11 @@ impl Database {
     /// [`Builder::open`] for more details.
     pub fn open(path: &str, options: Options) -> Result<Self> {
         Builder::new().open(path, options)
+    }
+
+    /// Lists collections in the database.
+    pub fn list(path: &str, options: Options) -> Result<Vec<CollectionInfo>> {
+        DatabaseHandle::list(path, options)
     }
 
     /// Creates a collection.
@@ -213,6 +220,29 @@ impl DatabaseHandle {
             collections: Mutex::new(collections),
             collection_names: Mutex::new(collection_names),
         })
+    }
+
+    fn list(path: &str, options: Options) -> Result<Vec<CollectionInfo>> {
+        let dir = options
+            .env
+            .open_dir(path)
+            .map_err(|e| Error::io(e, format!("open database '{path}'")))?;
+        let dir = RootDir::new(dir, path.into());
+
+        let id = dir.read_current()?.ok_or_else(|| {
+            Error::io(ErrorKind::NotFound.into(), format!("read current manifest"))
+        })?;
+        let desc = dir.open_manifest(id).and_then(Manifest::load)?;
+        let list = desc
+            .collections
+            .into_values()
+            .map(|c| CollectionInfo {
+                id: c.id,
+                name: c.name,
+                kind: CollectionKind::from(c.kind),
+            })
+            .collect();
+        Ok(list)
     }
 
     fn next_id(&self) -> u64 {
