@@ -30,6 +30,21 @@ pub(crate) mod private {
     use crate::database::Database;
     use crate::error::Result;
 
+    #[repr(u32)]
+    #[derive(Copy, Clone, Eq, PartialEq)]
+    pub(crate) enum Kind {
+        Tree = 1,
+    }
+
+    impl From<u32> for Kind {
+        fn from(value: u32) -> Self {
+            match value {
+                1 => Kind::Tree,
+                _ => panic!("invalid collection kind: {}", value),
+            }
+        }
+    }
+
     #[derive(Clone)]
     pub(crate) enum Handle {
         Tree(TreeHandle),
@@ -39,6 +54,12 @@ pub(crate) mod private {
         pub(crate) fn open(dir: Box<dyn Dir>, options: Options) -> Result<Self> {
             match options {
                 Options::Tree(options) => TreeHandle::open(dir, options).map(Handle::Tree),
+            }
+        }
+
+        pub(crate) fn kind(&self) -> Kind {
+            match self {
+                Handle::Tree(_) => Kind::Tree,
             }
         }
 

@@ -6,4 +6,5 @@ pub use database::{Builder, Database, Options};
 
 pub mod collections;
 
+mod manifest;
 mod root;

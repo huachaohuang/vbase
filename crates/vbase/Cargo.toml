@@ -13,6 +13,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+prost.workspace = true
 thiserror.workspace = true
 vbase-env.workspace = true
 vbase-file.workspace = true

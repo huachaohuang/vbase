@@ -18,12 +18,16 @@ impl Tree {
 }
 
 #[derive(Clone)]
-pub(crate) struct TreeHandle(Arc<vbase_tree::Tree>);
+pub(crate) struct TreeHandle {
+    tree: Arc<vbase_tree::Tree>,
+}
 
 impl TreeHandle {
     pub(crate) fn open(dir: Box<dyn Dir>, options: Options) -> Result<Self> {
         let tree = vbase_tree::Tree::open(dir, options)?;
-        Ok(Self(Arc::new(tree)))
+        Ok(Self {
+            tree: Arc::new(tree),
+        })
     }
 
     pub(crate) fn shutdown(&self) {
