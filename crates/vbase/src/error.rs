@@ -11,12 +11,12 @@ pub enum Error {
     Io { source: io::Error, context: String },
     #[error("{name} is corrupted: {message}")]
     Corrupted { name: String, message: String },
+    #[error("{0} does not exist")]
+    NotExist(String),
+    #[error("{0} already exists")]
+    AlreadyExists(String),
     #[error("{0}")]
     InvalidArgument(String),
-    #[error("collection '{0}' exists")]
-    CollectionExist(String),
-    #[error("collection '{0}' does not exist")]
-    CollectionNotExist(String),
 }
 
 impl Error {

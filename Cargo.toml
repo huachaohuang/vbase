@@ -22,6 +22,7 @@ print_stdout = "warn"
 print_stderr = "warn"
 
 [workspace.dependencies]
+prost = "0.14.1"
 thiserror = "2.0.17"
 vbase-env = { path = "crates/vbase-env", version = "0.1.0" }
 vbase-file = { path = "crates/vbase-file", version = "0.1.0" }

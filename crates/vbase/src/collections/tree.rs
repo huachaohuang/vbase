@@ -25,4 +25,8 @@ impl TreeHandle {
         let tree = vbase_tree::Tree::open(dir, options)?;
         Ok(Self(Arc::new(tree)))
     }
+
+    pub(crate) fn shutdown(&self) {
+        todo!()
+    }
 }

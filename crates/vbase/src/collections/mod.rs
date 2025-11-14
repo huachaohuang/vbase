@@ -41,6 +41,12 @@ pub(crate) mod private {
                 Options::Tree(options) => TreeHandle::open(dir, options).map(Handle::Tree),
             }
         }
+
+        pub(crate) fn shutdown(&self) {
+            match self {
+                Handle::Tree(handle) => handle.shutdown(),
+            }
+        }
     }
 
     pub(crate) trait Collection {
