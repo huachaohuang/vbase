@@ -14,8 +14,8 @@ impl Desc {
         for desc in edit.add_collections {
             self.collections.insert(desc.id, desc);
         }
-        for id in &edit.delete_collections {
-            self.collections.remove(id);
+        for name in edit.delete_collections {
+            self.collections.retain(|_, desc| desc.name != name);
         }
     }
 
@@ -35,8 +35,8 @@ pub(crate) struct Edit {
     pub(crate) last_id: u64,
     #[prost(tag = "2", repeated, message)]
     pub(crate) add_collections: Vec<CollectionDesc>,
-    #[prost(tag = "3", repeated, uint64)]
-    pub(crate) delete_collections: Vec<u64>,
+    #[prost(tag = "3", repeated, string)]
+    pub(crate) delete_collections: Vec<String>,
 }
 
 #[derive(Message)]

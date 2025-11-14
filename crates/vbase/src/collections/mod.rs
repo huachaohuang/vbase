@@ -14,7 +14,7 @@ impl From<u32> for Kind {
     fn from(value: u32) -> Self {
         match value {
             1 => Self::Tree,
-            _ => panic!("invalid collection kind: {}", value),
+            _ => panic!("invalid collection kind: {value}"),
         }
     }
 }
@@ -23,6 +23,14 @@ impl From<u32> for Kind {
 #[non_exhaustive]
 pub enum Options {
     Tree(tree::Options),
+}
+
+impl Options {
+    pub(crate) fn kind(&self) -> Kind {
+        match self {
+            Self::Tree(_) => Kind::Tree,
+        }
+    }
 }
 
 impl From<tree::Options> for Options {
@@ -54,8 +62,8 @@ pub struct CollectionInfo {
 pub(crate) mod private {
     use vbase_env::Dir;
 
+    use super::Options;
     use super::tree::{Tree, TreeHandle};
-    use super::{Kind, Options};
     use crate::database::Database;
     use crate::error::Result;
 
@@ -68,12 +76,6 @@ pub(crate) mod private {
         pub(crate) fn open(dir: Box<dyn Dir>, options: Options) -> Result<Self> {
             match options {
                 Options::Tree(options) => TreeHandle::open(dir, options).map(Self::Tree),
-            }
-        }
-
-        pub(crate) fn kind(&self) -> Kind {
-            match self {
-                Handle::Tree(_) => Kind::Tree,
             }
         }
 

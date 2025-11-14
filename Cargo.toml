@@ -9,7 +9,7 @@ license = "MIT"
 authors = ["Huachao Huang <huachao.huang@gmail.com>"]
 homepage = "https://github.com/huachaohuang/vbase"
 repository = "https://github.com/huachaohuang/vbase"
-description = "An embedded database"
+description = "A multi-model embedded database"
 rust-version = "1.91"
 
 [workspace.lints.rust]

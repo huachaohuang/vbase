@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{self, HashMap};
 use std::io::ErrorKind;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::Relaxed;
@@ -40,7 +40,10 @@ impl Default for Options {
 pub struct Builder {
     error_if_exists: bool,
     error_if_not_exist: bool,
+
     collection_options: HashMap<String, CollectionOptions>,
+    error_if_collection_exists: bool,
+    error_if_collection_not_exist: bool,
 }
 
 impl Builder {
@@ -50,6 +53,8 @@ impl Builder {
             error_if_exists: false,
             error_if_not_exist: false,
             collection_options: HashMap::new(),
+            error_if_collection_exists: false,
+            error_if_collection_not_exist: false,
         }
     }
 
@@ -79,11 +84,28 @@ impl Builder {
         self
     }
 
+    /// If enabled, returns an error if the collection already exists.
+    ///
+    /// Default: false
+    pub fn error_if_collection_exists(mut self, enable: bool) -> Self {
+        self.error_if_collection_exists = enable;
+        self
+    }
+
+    /// If enabled, returns an error if the collection does not exist.
+    ///
+    /// Default: false
+    pub fn error_if_collection_not_exist(mut self, enable: bool) -> Self {
+        self.error_if_collection_not_exist = enable;
+        self
+    }
+
     /// Opens a database.
     ///
-    /// This function creates the database if it does not exist when both
-    /// [`Self::error_if_exists`] and [`Self::error_if_not_exist`] are not
-    /// enabled.
+    /// The builder creates the database and collections if they do not exist by
+    /// default. This behavior can be changed by [`Self::error_if_exists`],
+    /// [`Self::error_if_not_exist`], [`Self::error_if_collection_exists`],
+    /// and [`Self::error_if_collection_not_exist`].
     ///
     /// An opened database locks `path` for exclusive access. Attempt to open
     /// the same database again will result in an error.
@@ -99,6 +121,7 @@ impl Default for Builder {
     }
 }
 
+/// A multi-model embedded database.
 #[derive(Clone)]
 pub struct Database(Arc<DatabaseHandle>);
 
@@ -107,8 +130,8 @@ impl Database {
     ///
     /// This function creates the database if it does not exist.
     ///
-    /// This is equivalent to `Builder::new().open(path, options)`. See
-    /// [`Builder::open`] for more details.
+    /// This is equivalent to `Builder::new().open(path, options)`.
+    /// See [`Builder::open`] for more details.
     pub fn open(path: &str, options: Options) -> Result<Self> {
         Builder::new().open(path, options)
     }
@@ -116,6 +139,19 @@ impl Database {
     /// Lists collections in the database.
     pub fn list(path: &str, options: Options) -> Result<Vec<CollectionInfo>> {
         DatabaseHandle::list(path, options)
+    }
+
+    /// Returns a collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotExist`] if `name` does not exist.
+    pub fn collection<C>(&self, name: &str) -> Result<C>
+    where
+        C: Collection,
+    {
+        let handle = self.0.collection(name)?;
+        C::open(self.clone(), handle)
     }
 
     /// Creates a collection.
@@ -142,11 +178,10 @@ impl Database {
 }
 
 struct DatabaseHandle {
-    dir: RootDir,
+    root: RootDir,
     next_id: AtomicU64,
     manifest: Mutex<Manifest>,
-    collections: Mutex<HashMap<u64, CollectionHandle>>,
-    collection_names: Mutex<HashMap<String, u64>>,
+    collections: Mutex<HashMap<String, CollectionHandle>>,
 }
 
 impl DatabaseHandle {
@@ -165,13 +200,13 @@ impl DatabaseHandle {
                 .map_err(|e| Error::io(e, format!("create database '{path}'")))?,
         };
 
-        let dir = RootDir::lock(dir, path.into())?;
-        let mut desc = match dir.read_current()? {
+        let root = RootDir::lock(dir, path.into())?;
+        let mut desc = match root.read_current()? {
             Some(_) if builder.error_if_exists => {
                 return Err(Error::AlreadyExists(format!("database '{path}'")));
             }
             Some(id) => {
-                let file = dir.open_manifest(id)?;
+                let file = root.open_manifest(id)?;
                 Manifest::load(file)?
             }
             None if builder.error_if_not_exist => {
@@ -180,45 +215,54 @@ impl DatabaseHandle {
             None => Desc::default(),
         };
 
+        let mut edit = Edit::default();
+        let mut last_id = desc.last_id;
         let mut collections = HashMap::new();
-        let mut collection_names = HashMap::new();
-        for desc in desc.collections.values() {
-            let dir = dir.open_collection(desc.id)?;
-            let Some(options) = builder.collection_options.remove(&desc.name) else {
-                return Err(Error::InvalidArgument(format!(
-                    "missing options for collection '{}'",
-                    desc.name
-                )));
+        for (name, options) in builder.collection_options.drain() {
+            let handle = match desc.collections.values().find(|c| c.name == name) {
+                Some(_) if builder.error_if_collection_exists => {
+                    return Err(Error::AlreadyExists(format!("collection '{name}'")));
+                }
+                Some(desc) if desc.kind != options.kind() as u32 => {
+                    return Err(Error::InvalidArgument(format!(
+                        "collection '{name}' is a {:?}, not a {:?}",
+                        CollectionKind::from(desc.kind),
+                        options.kind()
+                    )));
+                }
+                Some(desc) => root
+                    .open_collection(desc.id)
+                    .and_then(|dir| CollectionHandle::open(dir, options))?,
+                None if builder.error_if_collection_not_exist => {
+                    return Err(Error::NotExist(format!("collection '{name}'")));
+                }
+                None => {
+                    last_id += 1;
+                    let desc = CollectionDesc {
+                        id: last_id,
+                        name: name.clone(),
+                        kind: options.kind() as u32,
+                    };
+                    edit.add_collections.push(desc);
+                    root.create_collection(last_id)
+                        .and_then(|dir| CollectionHandle::open(dir, options))?
+                }
             };
-            let handle = CollectionHandle::open(dir, options)?;
-            collections.insert(desc.id, handle);
-            collection_names.insert(desc.name.clone(), desc.id);
-        }
-        if !builder.collection_options.is_empty() {
-            let names = builder
-                .collection_options
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("', '");
-            return Err(Error::InvalidArgument(format!(
-                "collections [{names}] do not exist"
-            )));
+            collections.insert(name, handle);
         }
 
-        let last_id = desc.last_id + 1;
-        let manifest = dir.create_manifest(last_id).and_then(|file| {
+        last_id += 1;
+        let manifest = root.create_manifest(last_id).and_then(|file| {
             desc.last_id = last_id;
             Manifest::open(desc, file)
         })?;
-        dir.switch_current(last_id)?;
+        root.switch_current(last_id)?;
 
         Ok(Self {
-            dir,
+            root,
             next_id: AtomicU64::new(last_id + 1),
             manifest: Mutex::new(manifest),
             collections: Mutex::new(collections),
-            collection_names: Mutex::new(collection_names),
         })
     }
 
@@ -227,12 +271,12 @@ impl DatabaseHandle {
             .env
             .open_dir(path)
             .map_err(|e| Error::io(e, format!("open database '{path}'")))?;
-        let dir = RootDir::new(dir, path.into());
+        let root = RootDir::new(dir, path.into());
 
-        let id = dir.read_current()?.ok_or_else(|| {
+        let id = root.read_current()?.ok_or_else(|| {
             Error::io(ErrorKind::NotFound.into(), format!("read current manifest"))
         })?;
-        let desc = dir.open_manifest(id).and_then(Manifest::load)?;
+        let desc = root.open_manifest(id).and_then(Manifest::load)?;
         let list = desc
             .collections
             .into_values()
@@ -253,13 +297,22 @@ impl DatabaseHandle {
         let mut manifest = self.manifest.lock().unwrap();
         if manifest.should_switch_file() {
             let id = self.next_id();
-            let file = self.dir.create_manifest(id)?;
+            let file = self.root.create_manifest(id)?;
             let mut edit = Edit::default();
             edit.last_id = id;
             manifest.switch_file(edit, file)?;
-            self.dir.switch_current(id)?;
+            self.root.switch_current(id)?;
         }
         manifest.update(edit)
+    }
+
+    fn collection(&self, name: &str) -> Result<CollectionHandle> {
+        let collections = self.collections.lock().unwrap();
+        let handle = collections
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Error::NotExist(format!("collection '{name}'")))?;
+        Ok(handle)
     }
 
     fn create_collection(
@@ -267,45 +320,41 @@ impl DatabaseHandle {
         name: &str,
         options: CollectionOptions,
     ) -> Result<CollectionHandle> {
-        let mut names = self.collection_names.lock().unwrap();
-        if names.contains_key(name) {
+        let mut collections = self.collections.lock().unwrap();
+        if collections.contains_key(name) {
             return Err(Error::AlreadyExists(format!("collection '{name}'")));
         }
-        let mut collections = self.collections.lock().unwrap();
 
         let id = self.next_id();
-        let dir = self.dir.create_collection(id)?;
-        let handle = CollectionHandle::open(dir, options)?;
-
+        let dir = self.root.create_collection(id)?;
         let desc = CollectionDesc {
             id,
             name: name.into(),
-            kind: handle.kind() as u32,
+            kind: options.kind() as u32,
         };
+        let handle = CollectionHandle::open(dir, options)?;
+
         let mut edit = Edit::default();
         edit.last_id = id;
         edit.add_collections.push(desc);
         self.update_manifest(edit)?;
 
-        names.insert(name.into(), id);
-        collections.insert(id, handle.clone());
+        collections.insert(name.into(), handle.clone());
         Ok(handle)
     }
 
     fn delete_collection(&self, name: &str) -> Result<()> {
-        let mut names = self.collection_names.lock().unwrap();
-        let Some(id) = names.get(name).cloned() else {
+        let mut collections = self.collections.lock().unwrap();
+        let Some(handle) = collections.get(name) else {
             return Err(Error::NotExist(format!("collection '{name}'")));
         };
-        let mut collections = self.collections.lock().unwrap();
 
         let mut edit = Edit::default();
-        edit.delete_collections.push(id);
+        edit.delete_collections.push(name.into());
         self.update_manifest(edit)?;
 
-        names.remove(name);
-        let handle = collections.remove(&id).unwrap();
         handle.shutdown();
+        collections.remove(name);
         Ok(())
     }
 }
