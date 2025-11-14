@@ -20,7 +20,14 @@ impl Tree {
     }
 }
 
+#[derive(Clone)]
 pub struct Options;
+
+impl Options {
+    pub fn new() -> Self {
+        Self
+    }
+}
 
 pub struct ReadOptions {
     pub cache: bool,

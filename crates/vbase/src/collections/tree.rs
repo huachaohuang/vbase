@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use vbase_env::Dir;
@@ -17,6 +18,12 @@ impl Tree {
     }
 }
 
+impl fmt::Debug for Tree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tree").finish()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct TreeHandle {
     tree: Arc<vbase_tree::Tree>,
@@ -30,7 +37,5 @@ impl TreeHandle {
         })
     }
 
-    pub(crate) fn shutdown(&self) {
-        todo!()
-    }
+    pub(crate) fn shutdown(&self) {}
 }

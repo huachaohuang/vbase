@@ -1,4 +1,4 @@
-use std::collections::{self, HashMap};
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::Relaxed;
@@ -17,15 +17,24 @@ use crate::manifest::{CollectionDesc, Desc, Edit};
 use crate::root::RootDir;
 
 /// Database options.
+#[derive(Clone)]
 pub struct Options {
-    env: Box<dyn Env>,
+    env: Arc<dyn Env>,
 }
 
 impl Options {
     /// Creates a default options.
     pub fn new() -> Self {
         Self {
-            env: Box::new(LocalEnv),
+            env: Arc::new(LocalEnv),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test() -> Self {
+        use vbase_env::TestEnv;
+        Self {
+            env: Arc::new(TestEnv::new().unwrap()),
         }
     }
 }
@@ -418,5 +427,46 @@ impl Manifest {
     /// Returns true if the current file should be switched.
     fn should_switch_file(&self) -> bool {
         self.file.size() >= (self.init_size * 2).max(Self::MIN_FILE_SIZE)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::collections::{Kind, Tree, tree};
+    use crate::{Database, Error, Options, Result};
+
+    const PATH: &str = "test";
+
+    #[test]
+    fn test_open() -> Result<()> {
+        let db = Database::open(PATH, Options::new_for_test())?;
+        let name = "tree";
+        db.create_collection::<Tree>(name, tree::Options::new())?;
+        match db.create_collection::<Tree>(name, tree::Options::new()) {
+            Err(Error::AlreadyExists(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        db.delete_collection(name)?;
+        match db.delete_collection(name) {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_list() -> Result<()> {
+        let options = Options::new_for_test();
+        let db = Database::open(PATH, options.clone())?;
+        db.create_collection::<Tree>("tree1", tree::Options::new())?;
+        db.create_collection::<Tree>("tree2", tree::Options::new())?;
+        let mut list = Database::list(PATH, options.clone())?;
+        list.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].name, "tree1");
+        assert_eq!(list[0].kind, Kind::Tree);
+        assert_eq!(list[1].name, "tree2");
+        assert_eq!(list[1].kind, Kind::Tree);
+        Ok(())
     }
 }
