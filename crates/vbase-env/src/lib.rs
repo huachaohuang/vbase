@@ -120,10 +120,10 @@ pub trait Dir: Send + Sync {
 /// A locked file.
 ///
 /// Dropping the locked file releases the lock.
-pub trait LockedFile {}
+pub trait LockedFile: Send + Sync {}
 
 /// A file opened for positional reads.
-pub trait PositionalFile {
+pub trait PositionalFile: Send + Sync {
     /// Reads some bytes into `buf` from the file at `offset`.
     ///
     /// Returns the number of bytes read.
@@ -154,7 +154,7 @@ impl PositionalFile for Box<dyn PositionalFile> {
 }
 
 /// A file opened for sequential reads.
-pub trait SequentialFile {
+pub trait SequentialFile: Send + Sync {
     /// Reads some bytes into `buf` from the file.
     ///
     /// Returns the number of bytes read.
@@ -195,7 +195,7 @@ impl SequentialFile for Box<dyn SequentialFile> {
 }
 
 /// A file opened for sequential writes.
-pub trait SequentialFileWriter {
+pub trait SequentialFileWriter: Send + Sync {
     /// Synchronizes all data to the file.
     fn sync(&mut self) -> Result<()>;
 

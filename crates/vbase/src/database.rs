@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, Mutex};
 
+use log::info;
 use prost::Message;
 use vbase_env::{Env, LocalEnv};
 use vbase_file::{JournalFile, JournalFileWriter};
@@ -69,6 +70,8 @@ impl Builder {
 
     /// If enabled, returns an error if the database already exists.
     ///
+    /// Conflicts with [`Self::error_if_not_exist`].
+    ///
     /// Default: false
     pub fn error_if_exists(mut self, enable: bool) -> Self {
         self.error_if_exists = enable;
@@ -76,6 +79,8 @@ impl Builder {
     }
 
     /// If enabled, returns an error if the database does not exist.
+    ///
+    /// Conflicts with [`Self::error_if_exists`].
     ///
     /// Default: false
     pub fn error_if_not_exist(mut self, enable: bool) -> Self {
@@ -95,6 +100,8 @@ impl Builder {
 
     /// If enabled, returns an error if the collection already exists.
     ///
+    /// Conflicts with [`Self::error_if_collection_not_exist`].
+    ///
     /// Default: false
     pub fn error_if_collection_exists(mut self, enable: bool) -> Self {
         self.error_if_collection_exists = enable;
@@ -102,6 +109,8 @@ impl Builder {
     }
 
     /// If enabled, returns an error if the collection does not exist.
+    ///
+    /// Conflicts with [`Self::error_if_collection_exists`].
     ///
     /// Default: false
     pub fn error_if_collection_not_exist(mut self, enable: bool) -> Self {
@@ -111,14 +120,29 @@ impl Builder {
 
     /// Opens a database.
     ///
-    /// The builder creates the database and collections if they do not exist by
-    /// default. This behavior can be changed by [`Self::error_if_exists`],
-    /// [`Self::error_if_not_exist`], [`Self::error_if_collection_exists`],
-    /// and [`Self::error_if_collection_not_exist`].
+    /// By default, the builder creates the database and collections if they do
+    /// not exist. This behavior can be changed by:
     ///
-    /// An opened database locks `path` for exclusive access. Attempt to open
+    /// - [`Self::error_if_exists`]
+    /// - [`Self::error_if_not_exist`]
+    /// - [`Self::error_if_collection_exists`]
+    /// - [`Self::error_if_collection_not_exist`]
+    ///
+    /// The opened database locks `path` for exclusive access. Attempt to open
     /// the same database again will result in an error.
     pub fn open(self, path: &str, options: Options) -> Result<Database> {
+        if self.error_if_exists && self.error_if_not_exist {
+            return Err(Error::InvalidArgument(
+                "cannot set both `error_if_exists` and `error_if_not_exist`".into(),
+            ));
+        }
+        if self.error_if_collection_exists && self.error_if_collection_not_exist {
+            return Err(Error::InvalidArgument(
+                "cannot set both `error_if_collection_exists` and `error_if_collection_not_exist`"
+                    .into(),
+            ));
+        }
+
         let handle = DatabaseHandle::open(path, options, self)?;
         Ok(Database(Arc::new(handle)))
     }
@@ -193,12 +217,14 @@ struct DatabaseHandle {
     collections: Mutex<HashMap<String, CollectionHandle>>,
 }
 
+/// Database methods.
 impl DatabaseHandle {
     fn open(path: &str, options: Options, mut builder: Builder) -> Result<Self> {
+        // Open or create `path`.
         let dir = match options.env.open_dir(path) {
             Ok(dir) => dir,
             Err(e) if e.kind() != ErrorKind::NotFound => {
-                return Err(Error::io(e, format!("open database '{path}'")));
+                return Err(Error::io(e, format!("open '{path}'")));
             }
             Err(_) if builder.error_if_not_exist => {
                 return Err(Error::NotExist(format!("database '{path}'")));
@@ -206,17 +232,18 @@ impl DatabaseHandle {
             Err(_) => options
                 .env
                 .create_dir(path)
-                .map_err(|e| Error::io(e, format!("create database '{path}'")))?,
+                .map_err(|e| Error::io(e, format!("create '{path}'")))?,
         };
 
+        // Load the current manifest.
         let root = RootDir::lock(dir, path.into())?;
         let mut desc = match root.read_current()? {
             Some(_) if builder.error_if_exists => {
                 return Err(Error::AlreadyExists(format!("database '{path}'")));
             }
             Some(id) => {
-                let file = root.open_manifest(id)?;
-                Manifest::load(file)?
+                info!("load manifest {id}");
+                root.open_manifest(id).and_then(Manifest::load)?
             }
             None if builder.error_if_not_exist => {
                 return Err(Error::NotExist(format!("database '{path}'")));
@@ -224,43 +251,46 @@ impl DatabaseHandle {
             None => Desc::default(),
         };
 
-        let mut edit = Edit::default();
-        let mut last_id = desc.last_id;
+        // Open or create collections.
         let mut collections = HashMap::new();
         for (name, options) in builder.collection_options.drain() {
-            let handle = match desc.collections.values().find(|c| c.name == name) {
+            let handle = match desc.collections.iter().find(|c| c.name == name) {
                 Some(_) if builder.error_if_collection_exists => {
                     return Err(Error::AlreadyExists(format!("collection '{name}'")));
                 }
-                Some(desc) if desc.kind != options.kind() as u32 => {
+                Some(c) if c.kind != options.kind() as u32 => {
                     return Err(Error::InvalidArgument(format!(
                         "collection '{name}' is a {:?}, not a {:?}",
-                        CollectionKind::from(desc.kind),
+                        CollectionKind::from(c.kind),
                         options.kind()
                     )));
                 }
-                Some(desc) => root
-                    .open_collection(desc.id)
-                    .and_then(|dir| CollectionHandle::open(dir, options))?,
+                Some(c) => {
+                    info!("open collection {c:?}");
+                    let dir = root.open_collection(c.id)?;
+                    CollectionHandle::open(dir, options)?
+                }
                 None if builder.error_if_collection_not_exist => {
                     return Err(Error::NotExist(format!("collection '{name}'")));
                 }
                 None => {
-                    last_id += 1;
-                    let desc = CollectionDesc {
-                        id: last_id,
+                    let c = CollectionDesc {
+                        id: desc.last_id + 1,
                         name: name.clone(),
                         kind: options.kind() as u32,
                     };
-                    edit.add_collections.push(desc);
-                    root.create_collection(last_id)
-                        .and_then(|dir| CollectionHandle::open(dir, options))?
+                    info!("create collection {c:?}");
+                    let dir = root.create_collection(c.id)?;
+                    desc.last_id = c.id;
+                    desc.collections.push(c);
+                    CollectionHandle::open(dir, options)?
                 }
             };
             collections.insert(name, handle);
         }
 
-        last_id += 1;
+        // Create a new manifest.
+        let last_id = desc.last_id + 1;
         let manifest = root.create_manifest(last_id).and_then(|file| {
             desc.last_id = last_id;
             Manifest::open(desc, file)
@@ -279,16 +309,16 @@ impl DatabaseHandle {
         let dir = options
             .env
             .open_dir(path)
-            .map_err(|e| Error::io(e, format!("open database '{path}'")))?;
+            .map_err(|e| Error::io(e, format!("open '{path}'")))?;
         let root = RootDir::new(dir, path.into());
 
-        let id = root.read_current()?.ok_or_else(|| {
-            Error::io(ErrorKind::NotFound.into(), format!("read current manifest"))
-        })?;
+        let id = root
+            .read_current()?
+            .ok_or_else(|| Error::io(ErrorKind::NotFound.into(), "read current manifest"))?;
         let desc = root.open_manifest(id).and_then(Manifest::load)?;
         let list = desc
             .collections
-            .into_values()
+            .into_iter()
             .map(|c| CollectionInfo {
                 id: c.id,
                 name: c.name,
@@ -298,30 +328,12 @@ impl DatabaseHandle {
         Ok(list)
     }
 
-    fn next_id(&self) -> u64 {
-        self.next_id.fetch_add(1, Relaxed)
-    }
-
-    fn update_manifest(&self, edit: Edit) -> Result<()> {
-        let mut manifest = self.manifest.lock().unwrap();
-        if manifest.should_switch_file() {
-            let id = self.next_id();
-            let file = self.root.create_manifest(id)?;
-            let mut edit = Edit::default();
-            edit.last_id = id;
-            manifest.switch_file(edit, file)?;
-            self.root.switch_current(id)?;
-        }
-        manifest.update(edit)
-    }
-
     fn collection(&self, name: &str) -> Result<CollectionHandle> {
         let collections = self.collections.lock().unwrap();
-        let handle = collections
+        collections
             .get(name)
             .cloned()
-            .ok_or_else(|| Error::NotExist(format!("collection '{name}'")))?;
-        Ok(handle)
+            .ok_or_else(|| Error::NotExist(format!("collection '{name}'")))
     }
 
     fn create_collection(
@@ -343,6 +355,7 @@ impl DatabaseHandle {
         };
         let handle = CollectionHandle::open(dir, options)?;
 
+        info!("create collection {desc:?}");
         let mut edit = Edit::default();
         edit.last_id = id;
         edit.add_collections.push(desc);
@@ -358,6 +371,7 @@ impl DatabaseHandle {
             return Err(Error::NotExist(format!("collection '{name}'")));
         };
 
+        info!("delete collection {name}");
         let mut edit = Edit::default();
         edit.delete_collections.push(name.into());
         self.update_manifest(edit)?;
@@ -368,6 +382,28 @@ impl DatabaseHandle {
     }
 }
 
+/// Internal methods.
+impl DatabaseHandle {
+    fn next_id(&self) -> u64 {
+        self.next_id.fetch_add(1, Relaxed)
+    }
+
+    fn update_manifest(&self, edit: Edit) -> Result<()> {
+        let mut manifest = self.manifest.lock().unwrap();
+        manifest.update(edit)?;
+        if manifest.should_switch_file() {
+            let id = self.next_id();
+            let file = self.root.create_manifest(id)?;
+            let mut edit = Edit::default();
+            edit.last_id = id;
+            manifest.switch_file(edit, file)?;
+            self.root.switch_current(id)?;
+        }
+        Ok(())
+    }
+}
+
+/// A manifest maintains the current database descriptor.
 struct Manifest {
     desc: Desc,
     file: JournalFileWriter,
@@ -400,7 +436,6 @@ impl Manifest {
         Ok(this)
     }
 
-    /// Updates the manifest with an edit.
     fn update(&mut self, edit: Edit) -> Result<()> {
         self.file.write(edit.encode_to_vec())?;
         self.file.sync()?;

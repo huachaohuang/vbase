@@ -1,33 +1,31 @@
-use std::collections::HashMap;
-
 use prost::Message;
 
+/// Database descriptor.
 #[derive(Default)]
 pub(crate) struct Desc {
     pub(crate) last_id: u64,
-    pub(crate) collections: HashMap<u64, CollectionDesc>,
+    pub(crate) collections: Vec<CollectionDesc>,
 }
 
 impl Desc {
-    pub(crate) fn merge(&mut self, edit: Edit) {
+    pub(crate) fn merge(&mut self, mut edit: Edit) {
         self.last_id = self.last_id.max(edit.last_id);
-        for desc in edit.add_collections {
-            self.collections.insert(desc.id, desc);
-        }
+        self.collections.append(&mut edit.add_collections);
         for name in edit.delete_collections {
-            self.collections.retain(|_, desc| desc.name != name);
+            self.collections.retain(|desc| desc.name != name);
         }
     }
 
     pub(crate) fn to_edit(&self) -> Edit {
         Edit {
             last_id: self.last_id,
-            add_collections: self.collections.values().cloned().collect(),
+            add_collections: self.collections.clone(),
             delete_collections: Vec::new(),
         }
     }
 }
 
+/// An edit to the database descriptor.
 #[derive(Message)]
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct Edit {
@@ -39,6 +37,7 @@ pub(crate) struct Edit {
     pub(crate) delete_collections: Vec<String>,
 }
 
+/// Collection descriptor.
 #[derive(Message)]
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct CollectionDesc {

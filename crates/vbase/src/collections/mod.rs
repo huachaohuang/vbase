@@ -2,8 +2,8 @@ pub mod tree;
 pub use tree::Tree;
 
 /// A list of supported collection kinds.
-#[repr(u32)]
 #[non_exhaustive]
+#[repr(u32)]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Kind {
     Tree = 1,
@@ -39,6 +39,7 @@ impl From<tree::Options> for Options {
     }
 }
 
+/// A collection in the database.
 #[allow(private_bounds)]
 pub trait Collection: private::Collection {
     type Options: Into<Options>;
@@ -86,7 +87,7 @@ pub(crate) mod private {
         }
     }
 
-    pub(crate) trait Collection {
+    pub(crate) trait Collection: Send + Sync {
         fn open(db: Database, handle: Handle) -> Result<Self>
         where
             Self: Sized;
