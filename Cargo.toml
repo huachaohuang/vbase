@@ -24,3 +24,4 @@ field_reassign_with_default = "allow"
 
 [workspace.dependencies]
 vbase-env = { path = "crates/vbase-env", version = "0.1.0" }
+vbase-util = { path = "crates/vbase-util", version = "0.1.0" }
