@@ -1,3 +1,4 @@
+pub mod arc;
 pub mod codec;
 pub mod crc32;
 
