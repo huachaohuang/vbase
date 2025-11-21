@@ -17,4 +17,5 @@ test = []
 shuttle = ["dep:shuttle"]
 
 [dependencies]
+crc32fast = "1.5.0"
 shuttle = { version = "0.8.1", optional = true }
