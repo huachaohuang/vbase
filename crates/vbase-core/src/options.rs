@@ -1,0 +1,58 @@
+use std::collections::HashMap;
+
+use vbase_env::Env;
+use vbase_util::sync::Arc;
+
+use crate::Database;
+use crate::Error;
+use crate::Result;
+use crate::engine::Handle;
+
+/// A database builder.
+pub struct Builder {
+    pub options: Options,
+    pub engines: HashMap<String, Box<dyn FnOnce() -> Result<Arc<dyn Handle>>>>,
+    pub error_if_exists: bool,
+    pub error_if_not_exist: bool,
+}
+
+impl Builder {
+    /// Opens a database at the given path.
+    pub fn open(self, path: &str) -> Result<Database> {
+        if self.error_if_exists && self.error_if_not_exist {
+            return Err(Error::InvalidArgument(
+                "cannot set both `error_if_exists` and `error_if_not_exist`".into(),
+            ));
+        }
+
+        Database::open(path, self)
+    }
+}
+
+/// Options for a database.
+#[derive(Clone, Debug)]
+pub struct Options {
+    pub env: Arc<dyn Env>,
+    pub journal_file_size: usize,
+}
+
+/// Options for write operations.
+#[derive(Clone, Default)]
+pub struct WriteOptions {
+    pub(crate) sync: bool,
+}
+
+impl WriteOptions {
+    /// Creates default options.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// If true, the write will be synchronized to the storage.
+    ///
+    /// Default: false
+    pub fn sync(mut self, enable: bool) -> Self {
+        self.sync = enable;
+        self
+    }
+}
