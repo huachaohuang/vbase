@@ -10,4 +10,6 @@ pub use options::WriteOptions;
 mod database;
 pub use database::Database;
 
-mod engine;
+pub mod engine;
+
+mod file;
