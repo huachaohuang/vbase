@@ -225,8 +225,10 @@ struct Engines(HashMap<u64, Box<dyn Handle>>);
 
 impl Engines {
     /// Finds an engine.
-    fn find(&self, name: &str) -> Option<&Box<dyn Handle>> {
-        self.0.values().find(|h| h.name() == name)
+    fn find(&self, name: &str) -> Option<&dyn Handle> {
+        self.0
+            .values()
+            .find_map(|h| (h.name() == name).then_some(h.as_ref()))
     }
 
     /// Writes a batch to engines.

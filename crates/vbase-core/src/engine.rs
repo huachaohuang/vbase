@@ -20,7 +20,7 @@ pub trait Engine {
 }
 
 /// A handle to an opened engine.
-pub trait Handle {
+pub trait Handle: Send + Sync {
     /// Returns the id of the engine.
     fn id(&self) -> u64;
 

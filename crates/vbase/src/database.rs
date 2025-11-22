@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use vbase_core::engine::Engine;
+use vbase_core::engine::Handle;
 use vbase_env::Env;
 use vbase_env::LocalEnv;
 use vbase_util::sync::Arc;
@@ -7,8 +9,6 @@ use vbase_util::sync::Arc;
 use crate::Result;
 use crate::WriteBatch;
 use crate::WriteOptions;
-use crate::engine::Engine;
-use crate::engine::Handle;
 
 /// A database builder.
 pub struct Builder(vbase_core::Builder);
@@ -138,7 +138,7 @@ mod tests {
     use crate::Database;
     use crate::Error;
     use crate::Result;
-    use crate::engine::test::Engine;
+    use crate::test::Engine;
 
     const PATH: &'static str = "test";
 
