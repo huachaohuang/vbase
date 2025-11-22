@@ -9,6 +9,7 @@ pub use options::WriteOptions;
 
 mod database;
 pub use database::Database;
+pub use database::WriteBatch;
 
 pub mod engine;
 

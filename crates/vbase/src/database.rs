@@ -5,6 +5,8 @@ use vbase_env::LocalEnv;
 use vbase_util::sync::Arc;
 
 use crate::Result;
+use crate::WriteBatch;
+use crate::WriteOptions;
 use crate::engine::Engine;
 
 /// A database builder.
@@ -94,7 +96,12 @@ impl Database {
         Builder::new().open(path)
     }
 
-    /// Returns a collection.
+    /// Writes a batch to the database.
+    pub fn write(&self, batch: &WriteBatch, options: &WriteOptions) -> Result<()> {
+        self.0.write(batch, options)
+    }
+
+    /// Gets a collection.
     ///
     /// # Errors
     ///

@@ -7,7 +7,6 @@ use vbase_file::error::Context;
 use vbase_util::sync::Arc;
 use vbase_util::sync::Mutex;
 
-use crate::Builder;
 use crate::Error;
 use crate::Result;
 use crate::engine::Engine;
@@ -15,7 +14,9 @@ use crate::engine::Handle;
 use crate::file::RootDir;
 use crate::manifest::Desc;
 use crate::manifest::EngineDesc;
+use crate::options::Builder;
 use crate::options::Options;
+use crate::options::WriteOptions;
 
 pub struct Database {
     root: RootDir,
@@ -110,6 +111,10 @@ impl Database {
         })
     }
 
+    pub fn write(&self, batch: &WriteBatch, options: &WriteOptions) -> Result<()> {
+        todo!()
+    }
+
     pub fn collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
         let engines = self.engines.lock().unwrap();
         let Some(engine) = engines.get(E::NAME) else {
@@ -157,5 +162,31 @@ impl fmt::Debug for Database {
             .field("path", &self.root)
             .field("options", &self.options)
             .finish()
+    }
+}
+
+/// A batch of updates.
+#[derive(Clone, Default)]
+pub struct WriteBatch {
+    buf: Vec<u8>,
+}
+
+impl AsRef<[u8]> for WriteBatch {
+    fn as_ref(&self) -> &[u8] {
+        self.buf.as_ref()
+    }
+}
+
+/// An iterator over a write batch.
+struct WriteBatchIter<'a>(&'a [u8]);
+
+impl<'a> Iterator for WriteBatchIter<'a> {
+    type Item = (u64, &'a [u8]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0.is_empty() {
+            return None;
+        }
+        todo!()
     }
 }
