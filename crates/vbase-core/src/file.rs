@@ -8,9 +8,9 @@ use vbase_env::LockedFile;
 use vbase_file::Result;
 use vbase_file::error::Context;
 use vbase_file::error::Corrupted;
-pub use vbase_file::journal::File as JournalFile;
-pub use vbase_file::journal::FileWriter as JournalFileWriter;
 
+use crate::journal::JournalFile;
+use crate::journal::JournalFileWriter;
 use crate::manifest::Desc;
 
 #[derive(Default)]
