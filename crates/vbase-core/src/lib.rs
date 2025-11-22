@@ -15,3 +15,4 @@ pub mod engine;
 
 mod file;
 mod manifest;
+mod pipeline;
