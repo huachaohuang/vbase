@@ -10,7 +10,7 @@ pub trait Engine {
     type Collection;
 
     /// The name of the engine.
-    const NAME: &'static str;
+    const NAME: &str;
 
     /// Opens an engine.
     fn open(id: u64, dir: Box<dyn Dir>) -> Result<Arc<dyn Handle>>;

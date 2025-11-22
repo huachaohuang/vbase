@@ -9,13 +9,15 @@ use vbase_util::sync::Mutex;
 use crate::Error;
 use crate::Result;
 
+const NAME: &str = "Test";
+
 /// A test engine.
 pub(crate) struct Engine;
 
 impl engine::Engine for Engine {
     type Collection = Collection;
 
-    const NAME: &'static str = "Test";
+    const NAME: &str = NAME;
 
     fn open(_: u64, _: Box<dyn Dir>) -> Result<Arc<dyn engine::Handle>> {
         Ok(Arc::new(Handle::default()))
@@ -35,10 +37,27 @@ impl engine::Engine for Engine {
 
 #[derive(Default)]
 struct Handle {
+    id: u64,
     collections: Mutex<HashMap<String, Arc<CollectionHandle>>>,
 }
 
 impl engine::Handle for Handle {
+    fn id(&self) -> u64 {
+        self.id
+    }
+
+    fn name(&self) -> &str {
+        NAME
+    }
+
+    fn write(&self, lsn: u64, batch: &[u8]) {
+        todo!()
+    }
+
+    fn last_lsn(&self) -> u64 {
+        0
+    }
+
     fn collection(&self, name: &str) -> Result<Arc<dyn engine::CollectionHandle>> {
         let collections = self.collections.lock().unwrap();
         let Some(collection) = collections.get(name) else {
