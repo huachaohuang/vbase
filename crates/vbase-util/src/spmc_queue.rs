@@ -54,7 +54,7 @@ fn unpack(state: u64) -> (u32, u32) {
     ((state >> 32) as u32, state as u32)
 }
 
-/// The producer part of [`Queue`].
+/// The producer part of a queue.
 pub struct Producer<T, const N: usize>(Arc<Queue<T, N>>);
 
 impl<T: Send + Sync, const N: usize> Producer<T, N> {
@@ -85,7 +85,7 @@ impl<T: Send + Sync, const N: usize> Producer<T, N> {
     }
 }
 
-/// The consumer part of [`Queue`].
+/// The consumer part of a queue.
 #[derive(Clone)]
 pub struct Consumer<T, const N: usize>(Arc<Queue<T, N>>);
 

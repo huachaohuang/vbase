@@ -12,9 +12,11 @@ pub trait Engine {
     /// The name of the engine.
     const NAME: &str;
 
+    #[doc(hidden)]
     /// Opens an engine.
     fn open(id: u64, dir: Box<dyn Dir>) -> Result<Arc<dyn Handle>>;
 
+    #[doc(hidden)]
     /// Wraps a collection handle.
     fn collection(handle: Arc<dyn CollectionHandle>) -> Result<Self::Collection>;
 }

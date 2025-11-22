@@ -91,7 +91,7 @@ impl Database {
     /// This function creates the database if it does not exist.
     ///
     /// This is equivalent to `Builder::new().open(path)`.
-    /// See [`Builder::open`] for more details.
+    /// See [`Builder`] for more details.
     pub fn open(path: &str) -> Result<Self> {
         Builder::new().open(path)
     }
