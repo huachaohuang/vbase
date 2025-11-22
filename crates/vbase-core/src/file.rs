@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::fmt;
 use std::io::ErrorKind;
 
 use prost::Message;
@@ -9,8 +8,8 @@ use vbase_file::Result;
 use vbase_file::error::Context;
 use vbase_file::error::Corrupted;
 
-use crate::journal::JournalFile;
-use crate::journal::JournalFileWriter;
+use crate::journal::Journal;
+use crate::journal::JournalWriter;
 use crate::manifest::Desc;
 
 #[derive(Default)]
@@ -40,6 +39,10 @@ impl RootDir {
             path,
             lock: Some(lock),
         })
+    }
+
+    pub(crate) fn path(&self) -> &str {
+        &self.path
     }
 
     pub(crate) fn list(&self) -> Result<FileSet> {
@@ -73,22 +76,22 @@ impl RootDir {
             .context(|| format!("delete {name}"))
     }
 
-    pub(crate) fn open_journal(&self, id: u64) -> Result<JournalFile> {
+    pub(crate) fn open_journal(&self, id: u64) -> Result<Journal> {
         let name = Name::journal(id);
         let file = self
             .dir
             .open_sequential_file(&name)
             .context(|| format!("open {name}"))?;
-        Ok(JournalFile::open(file, name))
+        Ok(Journal::open(file, name))
     }
 
-    pub(crate) fn create_journal(&self, id: u64) -> Result<JournalFileWriter> {
+    pub(crate) fn create_journal(&self, id: u64) -> Result<JournalWriter> {
         let name = Name::journal(id);
         let file = self
             .dir
             .create_sequential_file(&name)
             .context(|| format!("create {name}"))?;
-        Ok(JournalFileWriter::open(file, name))
+        Ok(JournalWriter::open(file, name))
     }
 
     pub(crate) fn delete_journal(&self, id: u64) -> Result<()> {
@@ -116,12 +119,6 @@ impl RootDir {
         self.dir
             .rename_file(Self::TEMP, Self::MANIFEST)
             .context(|| format!("rename {} to {}", Self::TEMP, Self::MANIFEST))
-    }
-}
-
-impl fmt::Debug for RootDir {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.path)
     }
 }
 

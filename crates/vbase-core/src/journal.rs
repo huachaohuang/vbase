@@ -9,11 +9,11 @@ use vbase_util::codec::Encoder;
 use crate::Result;
 
 /// A journal file reader.
-pub(crate) struct JournalFile {
+pub(crate) struct Journal {
     file: File,
 }
 
-impl JournalFile {
+impl Journal {
     pub(crate) fn open(file: Box<dyn SequentialFile>, name: String) -> Self {
         let file = File::open(file, name);
         Self { file }
@@ -32,11 +32,11 @@ impl JournalFile {
 }
 
 /// A journal file writer.
-pub(crate) struct JournalFileWriter {
+pub(crate) struct JournalWriter {
     file: FileWriter,
 }
 
-impl JournalFileWriter {
+impl JournalWriter {
     pub(crate) fn open(file: Box<dyn SequentialFileWriter>, name: String) -> Self {
         let file = FileWriter::open(file, name);
         Self { file }

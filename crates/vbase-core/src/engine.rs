@@ -21,6 +21,18 @@ pub trait Engine {
 
 /// A handle to an opened engine.
 pub trait Handle {
+    /// Returns the id of the engine.
+    fn id(&self) -> u64;
+
+    /// Returns the name of the engine.
+    fn name(&self) -> &str;
+
+    /// Writes a batch with the given LSN.
+    fn write(&self, lsn: u64, batch: &[u8]);
+
+    /// Returns the last LSN written to the engine.
+    fn last_lsn(&self) -> u64;
+
     /// Gets a collection.
     fn collection(&self, name: &str) -> Result<Arc<dyn CollectionHandle>>;
 

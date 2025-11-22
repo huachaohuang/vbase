@@ -4,6 +4,7 @@ use std::io::ErrorKind;
 
 use log::info;
 use vbase_file::error::Context;
+use vbase_file::error::Corrupted;
 use vbase_util::sync::Arc;
 use vbase_util::sync::Mutex;
 
@@ -12,17 +13,38 @@ use crate::Result;
 use crate::engine::Engine;
 use crate::engine::Handle;
 use crate::file::RootDir;
+use crate::journal::JournalWriter;
 use crate::manifest::Desc;
 use crate::manifest::EngineDesc;
 use crate::options::Builder;
 use crate::options::Options;
 use crate::options::WriteOptions;
+use crate::pipeline::WriteCommitter;
+use crate::pipeline::WriteSubmitter;
+use crate::pipeline::create_pipeline;
 
 pub struct Database {
     root: RootDir,
     options: Options,
+    engines: Engines,
 
-    engines: Mutex<HashMap<String, Arc<dyn Handle>>>,
+    /// Writes are processed in a pipeline to improve throughput.
+    ///
+    /// The write flow is split into two stages: submit and commit.
+    /// In the submit stage, locking is required to determine the order of
+    /// writes. In the commit stage, writers can update engines and commits
+    /// their writes without locking.
+    ///
+    /// The write flow should be as follows:
+    ///
+    /// 1. Lock the state
+    /// 2. Write to the journal
+    /// 3. Submit the write to the submitter
+    /// 4. Unlock the state
+    /// 5. Update the engines
+    /// 6. Commit the write to the committer
+    state: Mutex<State>,
+    committer: WriteCommitter,
 }
 
 impl Database {
@@ -45,7 +67,6 @@ impl Database {
                 .context(|| format!("create {path}"))?,
         };
         let root = RootDir::lock(dir, path.into())?;
-        let list = root.list()?;
 
         // Read the manifest file.
         let mut desc = match root.read_manifest()? {
@@ -60,6 +81,7 @@ impl Database {
         };
 
         // Clean up uncommitted engines.
+        let list = root.list()?;
         for id in list.engines {
             if !desc.engines.iter().any(|e| e.id == id) {
                 root.delete_engine(id)?;
@@ -70,7 +92,7 @@ impl Database {
         for engine in &desc.engines {
             if !builder.engines.contains_key(&engine.name) {
                 return Err(Error::InvalidArgument(format!(
-                    "engine {} exists but not provided",
+                    "engine {} exists but not registered",
                     engine.name,
                 )));
             }
@@ -79,35 +101,52 @@ impl Database {
         // Open or create engines in the builder.
         let mut engines = HashMap::new();
         for (name, open) in builder.engines.drain() {
-            let handle = match desc.engines.iter().find(|e| e.name == name) {
+            let (id, handle) = match desc.engines.iter().find(|e| e.name == name) {
                 Some(engine) => {
                     info!("open {engine:?}");
                     let dir = root.open_engine(engine.id)?;
-                    open(engine.id, dir)?
+                    let handle = open(engine.id, dir)?;
+                    (engine.id, handle)
                 }
                 None => {
+                    let id = desc.last_id + 1;
                     let engine = EngineDesc {
-                        id: desc.last_id + 1,
+                        id,
                         name: name.clone(),
                     };
                     info!("create {engine:?}");
-                    let dir = root.create_engine(engine.id)?;
-                    let handle = open(engine.id, dir)?;
-                    desc.last_id = engine.id;
+                    desc.last_id = id;
                     desc.engines.push(engine);
-                    handle
+                    let dir = root.create_engine(id)?;
+                    let handle = open(id, dir)?;
+                    (id, handle)
                 }
             };
-            engines.insert(name, handle);
+            engines.insert(id, handle);
         }
 
         // Update the manifest to commit created engines.
         root.update_manifest(&desc)?;
 
+        // Recover the previous state.
+        let engines = Engines(engines);
+        let mut recover = Recover::new(root, engines)?;
+        recover.recover()?;
+        let Recover {
+            root,
+            engines,
+            last_lsn,
+        } = recover;
+        let journal = root.create_journal(last_lsn + 1)?;
+        let (submitter, committer) = create_pipeline(last_lsn);
+        let state = State { journal, submitter };
+
         Ok(Self {
             root,
             options,
-            engines: Mutex::new(engines),
+            engines,
+            state: Mutex::new(state),
+            committer,
         })
     }
 
@@ -116,8 +155,7 @@ impl Database {
     }
 
     pub fn collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
-        let engines = self.engines.lock().unwrap();
-        let Some(engine) = engines.get(E::NAME) else {
+        let Some(engine) = self.engines.find(E::NAME) else {
             return Err(Error::InvalidArgument(format!(
                 "engine {} does not exist",
                 E::NAME
@@ -129,8 +167,7 @@ impl Database {
     }
 
     pub fn create_collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
-        let engines = self.engines.lock().unwrap();
-        let Some(engine) = engines.get(E::NAME) else {
+        let Some(engine) = self.engines.find(E::NAME) else {
             return Err(Error::InvalidArgument(format!(
                 "engine {} does not exist",
                 E::NAME
@@ -143,8 +180,7 @@ impl Database {
     }
 
     pub fn delete_collection<E: Engine>(&self, name: &str) -> Result<()> {
-        let engines = self.engines.lock().unwrap();
-        let Some(engine) = engines.get(E::NAME) else {
+        let Some(engine) = self.engines.find(E::NAME) else {
             return Err(Error::InvalidArgument(format!(
                 "engine {} does not exist",
                 E::NAME
@@ -159,9 +195,106 @@ impl Database {
 impl fmt::Debug for Database {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Database")
-            .field("path", &self.root)
+            .field("path", &self.root.path())
             .field("options", &self.options)
             .finish()
+    }
+}
+
+struct State {
+    journal: JournalWriter,
+    submitter: WriteSubmitter,
+}
+
+struct Engines(HashMap<u64, Arc<dyn Handle>>);
+
+impl Engines {
+    /// Finds an engine.
+    fn find(&self, name: &str) -> Option<&Arc<dyn Handle>> {
+        self.0.values().find(|h| h.name() == name)
+    }
+
+    /// Writes a batch to engines.
+    fn write(&self, lsn: u64, batch: &[u8]) {
+        for (id, batch) in WriteBatchIter(batch) {
+            if let Some(engine) = self.0.get(&id) {
+                engine.write(lsn, batch);
+            }
+        }
+    }
+
+    /// Recovers engines from a write batch.
+    fn recover(&self, lsn: u64, batch: &[u8]) {
+        for (id, batch) in WriteBatchIter(batch) {
+            if let Some(engine) = self.0.get(&id) {
+                if engine.last_lsn() >= lsn {
+                    continue;
+                }
+                engine.write(lsn, batch);
+            }
+        }
+    }
+
+    /// Returns the minimum last LSN among all engines.
+    fn min_last_lsn(&self) -> u64 {
+        self.0.values().map(|db| db.last_lsn()).min().unwrap_or(0)
+    }
+
+    /// Returns the maximum last LSN among all engines.
+    fn max_last_lsn(&self) -> u64 {
+        self.0.values().map(|db| db.last_lsn()).max().unwrap_or(0)
+    }
+}
+
+struct Recover {
+    root: RootDir,
+    engines: Engines,
+    last_lsn: u64,
+}
+
+impl Recover {
+    fn new(root: RootDir, engines: Engines) -> Result<Self> {
+        Ok(Self {
+            root,
+            engines,
+            last_lsn: 0,
+        })
+    }
+
+    fn recover(&mut self) -> Result<()> {
+        for id in self.journals_to_recover()? {
+            info!("recover from journal {id}");
+            let mut journal = self.root.open_journal(id)?;
+            while let Some((lsn, batch)) = journal.read()? {
+                self.engines.recover(lsn, batch);
+                self.last_lsn = lsn;
+            }
+        }
+
+        let max_lsn = self.engines.max_last_lsn();
+        if self.last_lsn < max_lsn {
+            return self.root.path().corrupted(format!(
+                "the last LSN {} in journal files is less than \
+                the maximum last LSN {} in engines, \
+                which means that some journal files are missing or corrupted, \
+                and we can not recover to a consistent state",
+                self.last_lsn, max_lsn,
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    /// Returns the journal files that need to be recovered.
+    fn journals_to_recover(&self) -> Result<Vec<u64>> {
+        let list = self.root.list()?;
+        let min_lsn = self.engines.min_last_lsn();
+        let mut iter = list.journals.into_iter().peekable();
+        let mut first = None;
+        while let Some(id) = iter.next_if(|&id| id <= min_lsn) {
+            first = Some(id);
+        }
+        Ok(first.into_iter().chain(iter).collect())
     }
 }
 
