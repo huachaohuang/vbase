@@ -8,6 +8,7 @@ use crate::Result;
 use crate::WriteBatch;
 use crate::WriteOptions;
 use crate::engine::Engine;
+use crate::engine::Handle;
 
 /// A database builder.
 pub struct Builder(vbase_core::Builder);
@@ -34,7 +35,7 @@ impl Builder {
 
     /// Registers an engine.
     fn with_engine<E: Engine>(mut self) -> Self {
-        let open = |id, dir| E::open(id, dir);
+        let open = |id, dir| E::open(id, dir).map(|h| Box::new(h) as Box<dyn Handle>);
         self.0.engines.insert(E::NAME.into(), Box::new(open));
         self
     }

@@ -7,18 +7,16 @@ use crate::Result;
 
 /// A database engine.
 pub trait Engine {
-    type Collection;
+    #[doc(hidden)]
+    type Handle: Handle + 'static;
+    type Collection: Collection;
 
     /// The name of the engine.
     const NAME: &str;
 
     #[doc(hidden)]
-    /// Opens an engine.
-    fn open(id: u64, dir: Box<dyn Dir>) -> Result<Arc<dyn Handle>>;
-
-    #[doc(hidden)]
-    /// Wraps a collection handle.
-    fn collection(handle: Arc<dyn CollectionHandle>) -> Result<Self::Collection>;
+    /// Opens a handle to the engine.
+    fn open(id: u64, dir: Box<dyn Dir>) -> Result<Self::Handle>;
 }
 
 /// A handle to an opened engine.
@@ -43,6 +41,13 @@ pub trait Handle {
 
     /// Deletes a collection.
     fn delete_collection(&self, name: &str) -> Result<()>;
+}
+
+/// A collection in the engine.
+pub trait Collection {
+    type Handle: CollectionHandle + 'static;
+
+    fn open(handle: Arc<Self::Handle>) -> Self;
 }
 
 /// A handle to an opened collection.

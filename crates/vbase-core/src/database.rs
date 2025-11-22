@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::ErrorKind;
@@ -10,6 +11,8 @@ use vbase_util::sync::Mutex;
 
 use crate::Error;
 use crate::Result;
+use crate::engine::Collection;
+use crate::engine::CollectionHandle;
 use crate::engine::Engine;
 use crate::engine::Handle;
 use crate::file::RootDir;
@@ -163,7 +166,7 @@ impl Database {
         };
 
         let collection = engine.collection(name)?;
-        E::collection(collection)
+        open_collection_handle::<E, E::Collection>(collection)
     }
 
     pub fn create_collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
@@ -176,7 +179,7 @@ impl Database {
 
         info!("create collection {} in engine {}", name, E::NAME);
         let collection = engine.create_collection(name)?;
-        E::collection(collection)
+        open_collection_handle::<E, E::Collection>(collection)
     }
 
     pub fn delete_collection<E: Engine>(&self, name: &str) -> Result<()> {
@@ -201,16 +204,28 @@ impl fmt::Debug for Database {
     }
 }
 
+fn open_collection_handle<E, C>(handle: Arc<dyn CollectionHandle>) -> Result<C>
+where
+    E: Engine,
+    C: Collection,
+{
+    let handle = handle as Arc<dyn Any + Send + Sync>;
+    let handle = handle.downcast::<C::Handle>().map_err(|_| {
+        Error::InvalidArgument(format!("invalid collection handle for engine {}", E::NAME))
+    })?;
+    Ok(C::open(handle))
+}
+
 struct State {
     journal: JournalWriter,
     submitter: WriteSubmitter,
 }
 
-struct Engines(HashMap<u64, Arc<dyn Handle>>);
+struct Engines(HashMap<u64, Box<dyn Handle>>);
 
 impl Engines {
     /// Finds an engine.
-    fn find(&self, name: &str) -> Option<&Arc<dyn Handle>> {
+    fn find(&self, name: &str) -> Option<&Box<dyn Handle>> {
         self.0.values().find(|h| h.name() == name)
     }
 

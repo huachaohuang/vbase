@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::HashMap;
 
 use vbase_core::engine;
@@ -15,28 +14,18 @@ const NAME: &str = "Test";
 pub(crate) struct Engine;
 
 impl engine::Engine for Engine {
+    type Handle = Handle;
     type Collection = Collection;
 
     const NAME: &str = NAME;
 
-    fn open(_: u64, _: Box<dyn Dir>) -> Result<Arc<dyn engine::Handle>> {
-        Ok(Arc::new(Handle::default()))
-    }
-
-    fn collection(handle: Arc<dyn engine::CollectionHandle>) -> Result<Collection> {
-        let handle = handle as Arc<dyn Any + Send + Sync>;
-        let handle = handle.downcast::<CollectionHandle>().map_err(|_| {
-            Error::InvalidArgument(format!(
-                "invalid collection handle for {} engine",
-                Self::NAME
-            ))
-        })?;
-        Ok(Collection { handle })
+    fn open(_: u64, _: Box<dyn Dir>) -> Result<Self::Handle> {
+        Ok(Handle::default())
     }
 }
 
 #[derive(Default)]
-struct Handle {
+pub(crate) struct Handle {
     id: u64,
     collections: Mutex<HashMap<String, Arc<CollectionHandle>>>,
 }
@@ -91,7 +80,15 @@ pub(crate) struct Collection {
     handle: Arc<CollectionHandle>,
 }
 
+impl engine::Collection for Collection {
+    type Handle = CollectionHandle;
+
+    fn open(handle: Arc<Self::Handle>) -> Self {
+        Self { handle }
+    }
+}
+
 #[derive(Debug)]
-struct CollectionHandle;
+pub(crate) struct CollectionHandle;
 
 impl engine::CollectionHandle for CollectionHandle {}
