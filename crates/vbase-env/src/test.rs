@@ -1,4 +1,5 @@
 use std::io::Result;
+use std::sync::Arc;
 
 use crate::Dir;
 use crate::Env;
@@ -8,14 +9,17 @@ use crate::SequentialFile;
 use crate::SequentialFileWriter;
 
 /// An implementation of [`Env`] for tests.
+#[derive(Clone)]
 pub struct TestEnv {
-    root: TestDir,
+    root: Arc<TestDir>,
 }
 
 impl TestEnv {
     pub fn new() -> Result<Self> {
         let root = TestDir::new()?;
-        Ok(Self { root })
+        Ok(Self {
+            root: Arc::new(root),
+        })
     }
 }
 

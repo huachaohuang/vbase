@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use vbase_env::Dir;
 use vbase_env::Env;
-use vbase_util::sync::Arc;
 
 use crate::Database;
 use crate::Error;
@@ -33,9 +32,9 @@ impl Builder {
 }
 
 /// Options for a database.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Options {
-    pub env: Arc<dyn Env>,
+    pub env: Box<dyn Env>,
     pub journal_file_size: usize,
 }
 

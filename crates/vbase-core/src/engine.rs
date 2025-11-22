@@ -45,8 +45,10 @@ pub trait Handle: Send + Sync {
 
 /// A collection in the engine.
 pub trait Collection {
+    #[doc(hidden)]
     type Handle: CollectionHandle + 'static;
 
+    #[doc(hidden)]
     fn open(handle: Arc<Self::Handle>) -> Self;
 }
 

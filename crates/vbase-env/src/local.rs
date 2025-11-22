@@ -14,6 +14,7 @@ use crate::SequentialFile;
 use crate::SequentialFileWriter;
 
 /// An implementation of [`Env`] based on the local file system.
+#[derive(Clone)]
 pub struct LocalEnv;
 
 impl Env for LocalEnv {

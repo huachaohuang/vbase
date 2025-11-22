@@ -22,7 +22,7 @@ impl Builder {
     /// Creates a builder with the given environment.
     fn with_env<E: Env + 'static>(env: E) -> Self {
         let options = vbase_core::Options {
-            env: Arc::new(env),
+            env: Box::new(env),
             journal_file_size: 64 << 20,
         };
         Self(vbase_core::Builder {
@@ -149,6 +149,33 @@ mod tests {
 
     fn test_database() -> Result<Database> {
         test_builder().with_engine::<Engine>().open(PATH)
+    }
+
+    #[test]
+    fn test_exists_not_exist() -> Result<()> {
+        // Use the same environment to prevent `PATH` from being deleted.
+        let env = TestEnv::new().unwrap();
+        match Builder::with_env(env.clone())
+            .error_if_exists(true)
+            .error_if_not_exist(true)
+            .open(PATH)
+        {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match Builder::with_env(env.clone())
+            .error_if_not_exist(true)
+            .open(PATH)
+        {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Builder::with_env(env.clone()).open(PATH)?;
+        match Builder::with_env(env).error_if_exists(true).open(PATH) {
+            Err(Error::Exists(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
     }
 
     #[test]
