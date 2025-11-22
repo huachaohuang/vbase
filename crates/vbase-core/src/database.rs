@@ -46,7 +46,7 @@ impl Database {
         let root = RootDir::lock(dir, path.into())?;
         let list = root.list()?;
 
-        // Load the manifest.
+        // Read the manifest file.
         let mut desc = match root.read_manifest()? {
             Some(_) if builder.error_if_exists => {
                 return Err(Error::Exists(format!("manifest at {path}")));
@@ -147,15 +147,14 @@ impl Database {
         };
 
         info!("delete collection {} from engine {}", name, E::NAME);
-        engine.delete_collection(name)?;
-        Ok(())
+        engine.delete_collection(name)
     }
 }
 
 impl fmt::Debug for Database {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Database")
-            .field("path", &self.root.path())
+            .field("path", &self.root)
             .field("options", &self.options)
             .finish()
     }

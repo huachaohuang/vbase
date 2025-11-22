@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt;
 use std::io::ErrorKind;
 
 use prost::Message;
@@ -39,10 +40,6 @@ impl RootDir {
             path,
             lock: Some(lock),
         })
-    }
-
-    pub(crate) fn path(&self) -> &str {
-        &self.path
     }
 
     pub(crate) fn list(&self) -> Result<FileSet> {
@@ -119,6 +116,12 @@ impl RootDir {
         self.dir
             .rename_file(Self::TEMP, Self::MANIFEST)
             .context(|| format!("rename {} to {}", Self::TEMP, Self::MANIFEST))
+    }
+}
+
+impl fmt::Debug for RootDir {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.path)
     }
 }
 
