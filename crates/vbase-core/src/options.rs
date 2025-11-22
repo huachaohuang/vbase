@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use vbase_env::Dir;
 use vbase_env::Env;
 use vbase_util::sync::Arc;
 
@@ -8,10 +9,12 @@ use crate::Error;
 use crate::Result;
 use crate::engine::Handle;
 
+type OpenEngine = Box<dyn FnOnce(Box<dyn Dir>) -> Result<Arc<dyn Handle>>>;
+
 /// A database builder.
 pub struct Builder {
     pub options: Options,
-    pub engines: HashMap<String, Box<dyn FnOnce() -> Result<Arc<dyn Handle>>>>,
+    pub engines: HashMap<String, OpenEngine>,
     pub error_if_exists: bool,
     pub error_if_not_exist: bool,
 }
