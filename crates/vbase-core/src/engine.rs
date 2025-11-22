@@ -1,16 +1,18 @@
+use std::any::Any;
+
+use vbase_env::Dir;
 use vbase_util::sync::Arc;
 
 use crate::Result;
 
 pub trait Engine {
-    type Handle;
     type Collection;
 
     const NAME: &'static str;
 
-    fn open() -> Result<Self::Handle>;
+    fn open(id: u64, dir: Box<dyn Dir>) -> Result<Arc<dyn Handle>>;
 
-    fn collection(handle: Arc<dyn CollectionHandle>) -> Self::Collection;
+    fn collection(handle: Arc<dyn CollectionHandle>) -> Result<Self::Collection>;
 }
 
 pub trait Handle {
@@ -21,4 +23,4 @@ pub trait Handle {
     fn delete_collection(&self, name: &str) -> Result<()>;
 }
 
-pub trait CollectionHandle {}
+pub trait CollectionHandle: Any + Send + Sync {}

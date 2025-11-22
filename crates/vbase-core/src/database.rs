@@ -120,7 +120,7 @@ impl Database {
         };
 
         let collection = engine.collection(name)?;
-        Ok(E::collection(collection))
+        E::collection(collection)
     }
 
     pub fn create_collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
@@ -134,7 +134,7 @@ impl Database {
 
         info!("create collection {} in engine {}", name, E::NAME);
         let collection = engine.create_collection(name)?;
-        Ok(E::collection(collection))
+        E::collection(collection)
     }
 
     pub fn delete_collection<E: Engine>(&self, name: &str) -> Result<()> {

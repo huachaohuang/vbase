@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use vbase_core::engine::Engine;
+use vbase_env::Env;
 use vbase_env::LocalEnv;
 use vbase_util::sync::Arc;
 
 use crate::Result;
+use crate::engine::Engine;
 
 /// A database builder.
 pub struct Builder(vbase_core::Builder);
@@ -12,8 +13,13 @@ pub struct Builder(vbase_core::Builder);
 impl Builder {
     /// Creates a default builder.
     pub fn new() -> Self {
+        Self::with_env(LocalEnv)
+    }
+
+    /// Creates a builder with the given environment.
+    fn with_env<E: Env + 'static>(env: E) -> Self {
         let options = vbase_core::Options {
-            env: Arc::new(LocalEnv),
+            env: Arc::new(env),
             journal_file_size: 64 << 20,
         };
         Self(vbase_core::Builder {
@@ -22,6 +28,13 @@ impl Builder {
             error_if_exists: false,
             error_if_not_exist: false,
         })
+    }
+
+    /// Registers an engine.
+    fn with_engine<E: Engine>(mut self) -> Self {
+        let open = |id, dir| E::open(id, dir);
+        self.0.engines.insert(E::NAME.into(), Box::new(open));
+        self
     }
 
     /// If true, returns an error if the database already exists.
@@ -106,5 +119,70 @@ impl Database {
     /// Returns [`crate::Error::NotExist`] if `name` does not exist.
     pub fn delete_collection<E: Engine>(&self, name: &str) -> Result<()> {
         self.0.delete_collection::<E>(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use vbase_env::TestEnv;
+
+    use crate::Builder;
+    use crate::Database;
+    use crate::Error;
+    use crate::Result;
+    use crate::engine::test::Engine;
+
+    const PATH: &'static str = "test";
+
+    fn test_builder() -> Builder {
+        let env = TestEnv::new().unwrap();
+        Builder::with_env(env)
+    }
+
+    fn test_database() -> Result<Database> {
+        test_builder().with_engine::<Engine>().open(PATH)
+    }
+
+    #[test]
+    fn test_unregistered_engine() -> Result<()> {
+        let db = test_builder().open(PATH)?;
+        match db.collection::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.create_collection::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.delete_collection::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_delete_collection() -> Result<()> {
+        let db = test_database()?;
+        match db.collection::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        db.create_collection::<Engine>("test")?;
+        match db.create_collection::<Engine>("test") {
+            Err(Error::Exists(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        db.collection::<Engine>("test")?;
+        db.delete_collection::<Engine>("test")?;
+        match db.delete_collection::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.collection::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
     }
 }
