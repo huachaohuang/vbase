@@ -9,7 +9,7 @@ use crate::Error;
 use crate::Result;
 use crate::engine::Handle;
 
-type OpenEngine = Box<dyn FnOnce(Box<dyn Dir>) -> Result<Arc<dyn Handle>>>;
+type OpenEngine = Box<dyn FnOnce(u64, Box<dyn Dir>) -> Result<Arc<dyn Handle>>>;
 
 /// A database builder.
 pub struct Builder {

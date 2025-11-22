@@ -13,6 +13,8 @@ use crate::Result;
 use crate::engine::Engine;
 use crate::engine::Handle;
 use crate::file::RootDir;
+use crate::manifest::Desc;
+use crate::manifest::EngineDesc;
 use crate::options::Options;
 
 pub struct Database {
@@ -25,6 +27,7 @@ pub struct Database {
 impl Database {
     pub(crate) fn open(path: &str, mut builder: Builder) -> Result<Self> {
         let options = builder.options;
+        info!("open {path} with {options:#?}");
 
         // Open or create `path`.
         let dir = match options.env.open_dir(path) {
@@ -43,22 +46,62 @@ impl Database {
         let root = RootDir::lock(dir, path.into())?;
         let list = root.list()?;
 
-        // Check engine options.
-        for name in &list.engines {
-            if !builder.engines.contains_key(name) {
+        // Load the manifest.
+        let mut desc = match root.read_manifest()? {
+            Some(_) if builder.error_if_exists => {
+                return Err(Error::Exists(format!("manifest at {path}")));
+            }
+            Some(desc) => desc,
+            None if builder.error_if_not_exist => {
+                return Err(Error::NotExist(format!("manifest at {path}")));
+            }
+            None => Desc::default(),
+        };
+
+        // Clean up uncommitted engines.
+        for id in list.engines {
+            if !desc.engines.iter().any(|e| e.id == id) {
+                root.delete_engine(id)?;
+            }
+        }
+
+        // Validate engines in the builder.
+        for engine in &desc.engines {
+            if !builder.engines.contains_key(&engine.name) {
                 return Err(Error::InvalidArgument(format!(
-                    "engine {name} exists but not provided"
+                    "engine {} exists but not provided",
+                    engine.name,
                 )));
             }
         }
 
-        // Open or create engines.
+        // Open or create engines in the builder.
         let mut engines = HashMap::new();
         for (name, open) in builder.engines.drain() {
-            let dir = root.create_engine(&name)?;
-            let handle = open(dir)?;
+            let handle = match desc.engines.iter().find(|e| e.name == name) {
+                Some(engine) => {
+                    info!("open {engine:?}");
+                    let dir = root.open_engine(engine.id)?;
+                    open(engine.id, dir)?
+                }
+                None => {
+                    let engine = EngineDesc {
+                        id: desc.last_id + 1,
+                        name: name.clone(),
+                    };
+                    info!("create {engine:?}");
+                    let dir = root.create_engine(engine.id)?;
+                    let handle = open(engine.id, dir)?;
+                    desc.last_id = engine.id;
+                    desc.engines.push(engine);
+                    handle
+                }
+            };
             engines.insert(name, handle);
         }
+
+        // Update the manifest to commit created engines.
+        root.update_manifest(&desc)?;
 
         Ok(Self {
             root,
@@ -70,7 +113,10 @@ impl Database {
     pub fn collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
         let engines = self.engines.lock().unwrap();
         let Some(engine) = engines.get(E::NAME) else {
-            return Err(Error::NotExist(format!("engine {}", E::NAME)));
+            return Err(Error::InvalidArgument(format!(
+                "engine {} does not exist",
+                E::NAME
+            )));
         };
 
         let collection = engine.collection(name)?;
@@ -80,7 +126,10 @@ impl Database {
     pub fn create_collection<E: Engine>(&self, name: &str) -> Result<E::Collection> {
         let engines = self.engines.lock().unwrap();
         let Some(engine) = engines.get(E::NAME) else {
-            return Err(Error::NotExist(format!("engine {}", E::NAME)));
+            return Err(Error::InvalidArgument(format!(
+                "engine {} does not exist",
+                E::NAME
+            )));
         };
 
         info!("create collection {} in engine {}", name, E::NAME);
@@ -91,7 +140,10 @@ impl Database {
     pub fn delete_collection<E: Engine>(&self, name: &str) -> Result<()> {
         let engines = self.engines.lock().unwrap();
         let Some(engine) = engines.get(E::NAME) else {
-            return Err(Error::NotExist(format!("engine {}", E::NAME)));
+            return Err(Error::InvalidArgument(format!(
+                "engine {} does not exist",
+                E::NAME
+            )));
         };
 
         info!("delete collection {} from engine {}", name, E::NAME);
@@ -102,7 +154,7 @@ impl Database {
 
 impl fmt::Debug for Database {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Core")
+        f.debug_struct("Database")
             .field("path", &self.root.path())
             .field("options", &self.options)
             .finish()

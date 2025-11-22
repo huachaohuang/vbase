@@ -1,15 +1,20 @@
 use std::collections::BTreeSet;
+use std::io::ErrorKind;
 
+use prost::Message;
 use vbase_env::Dir;
 use vbase_env::LockedFile;
 use vbase_file::Result;
 use vbase_file::error::Context;
+use vbase_file::error::Corrupted;
 pub use vbase_file::journal::File as JournalFile;
 pub use vbase_file::journal::FileWriter as JournalFileWriter;
 
+use crate::manifest::Desc;
+
 #[derive(Default)]
 pub(crate) struct FileSet {
-    pub(crate) engines: BTreeSet<String>,
+    pub(crate) engines: BTreeSet<u64>,
     pub(crate) journals: BTreeSet<u64>,
 }
 
@@ -22,6 +27,8 @@ pub(crate) struct RootDir {
 
 impl RootDir {
     const LOCK: &str = "LOCK";
+    const TEMP: &str = "TEMP";
+    const MANIFEST: &str = "MANIFEST";
 
     pub(crate) fn lock(dir: Box<dyn Dir>, path: String) -> Result<Self> {
         let lock = dir
@@ -43,27 +50,27 @@ impl RootDir {
         let list = self.dir.list().context(|| format!("list {}", self.path))?;
         for name in list.iter().filter_map(|name| Name::parse(name)) {
             let _ = match name {
-                Name::Engine(name) => fset.engines.insert(name),
+                Name::Engine(id) => fset.engines.insert(id),
                 Name::Journal(id) => fset.journals.insert(id),
             };
         }
         Ok(fset)
     }
 
-    pub(crate) fn open_engine(&self, name: &str) -> Result<Box<dyn Dir>> {
-        let name = Name::engine(name);
+    pub(crate) fn open_engine(&self, id: u64) -> Result<Box<dyn Dir>> {
+        let name = Name::engine(id);
         self.dir.open_dir(&name).context(|| format!("open {name}"))
     }
 
-    pub(crate) fn create_engine(&self, name: &str) -> Result<Box<dyn Dir>> {
-        let name = Name::engine(name);
+    pub(crate) fn create_engine(&self, id: u64) -> Result<Box<dyn Dir>> {
+        let name = Name::engine(id);
         self.dir
             .create_dir(&name)
             .context(|| format!("create {name}"))
     }
 
-    pub(crate) fn delete_engine(&self, name: &str) -> Result<()> {
-        let name = Name::engine(name);
+    pub(crate) fn delete_engine(&self, id: u64) -> Result<()> {
+        let name = Name::engine(id);
         self.dir
             .delete_dir(&name)
             .context(|| format!("delete {name}"))
@@ -94,16 +101,35 @@ impl RootDir {
             .context(|| format!("delete {name}"))?;
         Ok(())
     }
+
+    pub(crate) fn read_manifest(&self) -> Result<Option<Desc>> {
+        match self.dir.read_file(Self::MANIFEST) {
+            Ok(x) => Desc::decode(x.as_slice())
+                .map(Some)
+                .or_else(|e| Self::MANIFEST.corrupted(format!("{e}"))),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => e.context(|| format!("read {}", Self::MANIFEST)),
+        }
+    }
+
+    pub(crate) fn update_manifest(&self, desc: &Desc) -> Result<()> {
+        self.dir
+            .write_file(Self::TEMP, &desc.encode_to_vec())
+            .context(|| format!("write {}", Self::TEMP))?;
+        self.dir
+            .rename_file(Self::TEMP, Self::MANIFEST)
+            .context(|| format!("rename {} to {}", Self::TEMP, Self::MANIFEST))
+    }
 }
 
 enum Name {
-    Engine(String),
+    Engine(u64),
     Journal(u64),
 }
 
 impl Name {
     fn parse(name: &str) -> Option<Self> {
-        if let Some(suffix) = name.strip_prefix("engine.") {
+        if let Some(suffix) = name.strip_prefix("engine-") {
             suffix.parse().ok().map(Self::Engine)
         } else if let Some(suffix) = name.strip_prefix("journal-") {
             suffix.parse().ok().map(Self::Journal)
@@ -112,8 +138,8 @@ impl Name {
         }
     }
 
-    fn engine(name: &str) -> String {
-        format!("engine.{name}")
+    fn engine(id: u64) -> String {
+        format!("engine-{id}")
     }
 
     fn journal(id: u64) -> String {
