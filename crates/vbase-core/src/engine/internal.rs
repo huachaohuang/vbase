@@ -59,15 +59,18 @@ pub trait Bucket {
     /// Opens a bucket with the given handle.
     fn open(handle: Arc<Self::Handle>) -> Self;
 
+    /// Returns the handle of the bucket.
+    fn handle(&self) -> &Self::Handle;
+}
+
+/// A handle to an opened bucket.
+pub trait BucketHandle: Any + Send + Sync + 'static {
     /// Returns the id of the bucket.
     fn id(&self) -> u64;
 
     /// Returns the engine id of the bucket.
     fn engine_id(&self) -> u64;
 }
-
-/// A handle to an opened bucket.
-pub trait BucketHandle: Any + Send + Sync + 'static {}
 
 /// A batch of updates to a bucket.
 pub trait WriteBatch<'a> {

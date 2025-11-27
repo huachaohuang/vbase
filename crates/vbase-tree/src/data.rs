@@ -142,6 +142,11 @@ pub(crate) enum ValueKind {
     Tombstone = 3,
 }
 
+impl ValueKind {
+    /// An invalid value kind that can be used as a special marker.
+    pub(crate) const NONE: u8 = 0;
+}
+
 impl From<u8> for ValueKind {
     fn from(value: u8) -> Self {
         match value {

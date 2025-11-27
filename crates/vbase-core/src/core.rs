@@ -354,11 +354,12 @@ impl WriteBatch {
 
     /// Returns a write batch for the bucket.
     pub fn bucket<B: Bucket>(&mut self, bucket: &B) -> B::WriteBatch<'_> {
-        let buf = self
+        let handle = bucket.handle();
+        let buffer = self
             .engines
-            .entry(bucket.engine_id())
+            .entry(handle.engine_id())
             .or_insert_with(|| Vec::with_capacity(4096));
-        B::WriteBatch::new(bucket.id(), buf)
+        B::WriteBatch::new(handle.id(), buffer)
     }
 }
 
