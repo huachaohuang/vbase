@@ -25,3 +25,4 @@ vbase-env = { path = "crates/vbase-env" }
 vbase-util = { path = "crates/vbase-util" }
 vbase-file = { path = "crates/vbase-file" }
 vbase-core = { path = "crates/vbase-core" }
+vbase-engine = { path = "crates/vbase-engine" }
