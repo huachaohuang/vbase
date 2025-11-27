@@ -9,7 +9,9 @@ repository.workspace = true
 description.workspace = true
 rust-version.workspace = true
 
-[dependencies]
-
 [lints]
 workspace = true
+
+[dependencies]
+vbase-util.workspace = true
+vbase-core.workspace = true
