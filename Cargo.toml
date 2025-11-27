@@ -13,7 +13,6 @@ description = "A multi-model embedded database"
 rust-version = "1.91"
 
 [workspace.lints.rust]
-missing_docs = "warn"
 unreachable_pub = "warn"
 
 [workspace.lints.clippy]
@@ -23,3 +22,4 @@ print_stderr = "warn"
 
 [workspace.dependencies]
 vbase-env = { path = "crates/vbase-env" }
+vbase-util = { path = "crates/vbase-util" }
