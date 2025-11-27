@@ -3,6 +3,13 @@
 use std::io::ErrorKind;
 use std::io::Result;
 
+#[cfg(any(test, feature = "test"))]
+mod test;
+#[cfg(any(test, feature = "test"))]
+pub use test::TestDir;
+#[cfg(any(test, feature = "test"))]
+pub use test::TestEnv;
+
 mod mock;
 pub use mock::MockDir;
 pub use mock::MockEnv;

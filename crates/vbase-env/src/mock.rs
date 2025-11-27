@@ -18,7 +18,7 @@ pub struct MockEnv {
 }
 
 impl MockEnv {
-    /// Creates a new `MockEnv`.
+    /// Creates a new [`MockEnv`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -47,7 +47,7 @@ impl Env for MockEnv {
 pub struct MockDir(DirHandle);
 
 impl MockDir {
-    /// Creates a new `MockDir`.
+    /// Creates a new [`MockDir`].
     pub fn new() -> Self {
         Self::default()
     }
