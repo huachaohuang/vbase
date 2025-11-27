@@ -3,6 +3,10 @@
 use std::io::ErrorKind;
 use std::io::Result;
 
+mod local;
+pub use local::LocalDir;
+pub use local::LocalEnv;
+
 /// A system environment.
 pub trait Env: Send + Sync {
     /// Returns the name of the environment.
