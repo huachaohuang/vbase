@@ -1,0 +1,25 @@
+[package]
+name = "vbase-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+test = ["vbase-env/test", "vbase-util/test"]
+
+[dependencies]
+log = "0.4.28"
+prost = "0.14.1"
+thiserror = "2.0.17"
+# Workspace dependencies
+vbase-env.workspace = true
+vbase-util.workspace = true
+vbase-file.workspace = true
