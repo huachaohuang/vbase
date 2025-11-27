@@ -22,3 +22,4 @@ print_stdout = "warn"
 print_stderr = "warn"
 
 [workspace.dependencies]
+vbase-env = { path = "crates/vbase-env" }
