@@ -7,3 +7,4 @@ pub mod engine;
 mod file;
 mod journal;
 mod manifest;
+mod pipeline;
