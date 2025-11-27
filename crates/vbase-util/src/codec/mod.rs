@@ -26,7 +26,7 @@ pub trait Encode {
     fn size(&self) -> usize;
 
     /// Encodes the value to the given encoder.
-    fn encode_to<E: Encoder>(&self, enc: &mut E);
+    fn encode_to<E: Encoder>(self, enc: &mut E);
 }
 
 /// A value that can be decoded from [`Decoder`].
@@ -80,7 +80,7 @@ macro_rules! impl_int {
                 size_of::<$t>()
             }
 
-            fn encode_to<E: Encoder>(&self, enc: &mut E) {
+            fn encode_to<E: Encoder>(self, enc: &mut E) {
                 enc.append(&self.to_le_bytes());
             }
         }
@@ -106,8 +106,8 @@ impl Encode for u8 {
         1
     }
 
-    fn encode_to<E: Encoder>(&self, enc: &mut E) {
-        enc.put(*self);
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
+        enc.put(self);
     }
 }
 
@@ -122,7 +122,7 @@ impl Encode for &[u8] {
         Varint::size(self.len()) + self.len()
     }
 
-    fn encode_to<E: Encoder>(&self, enc: &mut E) {
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
         enc.encode_varint(self.len());
         enc.append(self);
     }
@@ -177,16 +177,16 @@ pub trait Decoder<'de>: Sized {
 #[cfg(any(test, feature = "test"))]
 pub fn test_value<'de, T>(value: T)
 where
-    T: Encode + Decode<'de> + PartialEq + std::fmt::Debug,
+    T: Encode + Decode<'de> + Clone + PartialEq + std::fmt::Debug,
 {
     let mut enc = Vec::new();
-    value.encode_to(&mut enc);
+    enc.encode(value.clone());
     assert_eq!(enc.len(), value.size());
     let mut dec: &[u8] = unsafe {
         // SAFETY: extend lifetime within this function
         std::mem::transmute(enc.as_slice())
     };
-    assert_eq!(T::decode_from(&mut dec), value);
+    assert_eq!(dec.decode::<T>(), value);
 }
 
 #[cfg(test)]

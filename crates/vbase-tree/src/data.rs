@@ -49,7 +49,7 @@ impl<'a> Encode for Vid<'a> {
         self.id.size() + Varint::size(self.lsn)
     }
 
-    fn encode_to<E: Encoder>(&self, enc: &mut E) {
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
         enc.encode(self.id);
         enc.encode_varint(self.lsn);
     }
@@ -110,11 +110,11 @@ impl<'a> Encode for Value<'a> {
         }
     }
 
-    fn encode_to<E: Encoder>(&self, enc: &mut E) {
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
         match self {
             Value::Value(v) => {
                 enc.encode(ValueKind::Value);
-                enc.encode(*v);
+                enc.encode(v);
             }
             Value::Tombstone => {
                 enc.encode(ValueKind::Tombstone);
@@ -158,8 +158,8 @@ impl Encode for ValueKind {
         1
     }
 
-    fn encode_to<E: Encoder>(&self, enc: &mut E) {
-        enc.put(*self as u8);
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
+        enc.put(self as u8);
     }
 }
 
