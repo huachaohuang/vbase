@@ -18,6 +18,8 @@ mod local;
 pub use local::LocalDir;
 pub use local::LocalEnv;
 
+pub mod boxed;
+
 /// A system environment.
 pub trait Env: Send + Sync {
     /// Returns the name of the environment.
