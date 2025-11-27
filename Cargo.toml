@@ -23,3 +23,4 @@ print_stderr = "warn"
 [workspace.dependencies]
 vbase-env = { path = "crates/vbase-env" }
 vbase-util = { path = "crates/vbase-util" }
+vbase-file = { path = "crates/vbase-file" }

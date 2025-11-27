@@ -1,0 +1,23 @@
+[package]
+name = "vbase-file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "2.0.17"
+# Workspace dependencies
+vbase-env.workspace = true
+vbase-util.workspace = true
+
+[dev-dependencies]
+# Workspace dependencies
+vbase-env = { workspace = true, features = ["test"] }
