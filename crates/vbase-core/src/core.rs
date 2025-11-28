@@ -6,6 +6,7 @@ use std::io::ErrorKind;
 use log::info;
 use vbase_file::journal::RecordWriter;
 use vbase_util::cell::UnsafeCell;
+use vbase_util::codec::Decoder;
 use vbase_util::sync::Arc;
 use vbase_util::sync::Mutex;
 use vbase_util::sync::MutexGuard;
@@ -386,6 +387,8 @@ impl<'a> Iterator for WriteBatchIter<'a> {
         if self.0.is_empty() {
             return None;
         }
-        todo!()
+        let id = self.0.decode_varint();
+        let batch = self.0.decode();
+        Some((id, batch))
     }
 }
