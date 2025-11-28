@@ -4,6 +4,7 @@ use std::fmt;
 use std::io::ErrorKind;
 
 use log::info;
+use vbase_file::journal::RecordWriter;
 use vbase_util::cell::UnsafeCell;
 use vbase_util::sync::Arc;
 use vbase_util::sync::Mutex;
@@ -169,7 +170,7 @@ impl Core {
                 submitter: unsafe { self.submitter.as_mut() },
             };
             let lsn = guard.submitter.next_lsn();
-            guard.journal.write(lsn, batch.as_ref())?;
+            guard.journal.write(lsn, |record| batch.append(record))?;
             if options.sync {
                 guard.journal.sync()?;
             }
@@ -178,7 +179,7 @@ impl Core {
             (lsn, handle)
         };
 
-        self.engines.write(lsn, batch.as_ref());
+        self.engines.write(lsn, batch);
         self.committer.commit(handle);
         Ok(())
     }
@@ -253,9 +254,9 @@ impl Engines {
     }
 
     /// Writes a batch to engines.
-    fn write(&self, lsn: u64, batch: &[u8]) {
-        for (id, batch) in WriteBatchIter(batch) {
-            if let Some(engine) = self.0.get(&id) {
+    fn write(&self, lsn: u64, batch: &WriteBatch) {
+        for (id, batch) in &batch.engines {
+            if let Some(engine) = self.0.get(id) {
                 engine.write(lsn, batch);
             }
         }
@@ -363,9 +364,15 @@ impl WriteBatch {
     }
 }
 
-impl AsRef<[u8]> for WriteBatch {
-    fn as_ref(&self) -> &[u8] {
-        todo!()
+impl WriteBatch {
+    /// Appends the write batch to a record writer.
+    fn append(&self, record: &mut RecordWriter) -> Result<()> {
+        for (&id, batch) in &self.engines {
+            record.append_varint(id)?;
+            record.append_varint(batch.len())?;
+            record.append(batch)?;
+        }
+        Ok(())
     }
 }
 

@@ -2,9 +2,8 @@ use vbase_env::boxed::SequentialFile;
 use vbase_env::boxed::SequentialFileWriter;
 use vbase_file::journal::File;
 use vbase_file::journal::FileWriter;
-use vbase_util::codec::BytesEncoder;
+use vbase_file::journal::RecordWriter;
 use vbase_util::codec::Decoder;
-use vbase_util::codec::Encoder;
 
 use crate::Result;
 
@@ -41,11 +40,14 @@ impl JournalWriter {
     }
 
     /// Writes a batch to the file.
-    pub(crate) fn write(&mut self, lsn: u64, batch: &[u8]) -> Result<()> {
-        let mut buf = [0; 32];
-        let mut enc = BytesEncoder::new(&mut buf);
-        enc.encode_varint(lsn);
-        self.0.write_vectored(&[enc.encoded_bytes(), batch])?;
+    pub(crate) fn write<F>(&mut self, lsn: u64, append: F) -> Result<()>
+    where
+        F: FnOnce(&mut RecordWriter) -> Result<()>,
+    {
+        let mut record = self.0.record();
+        record.append_varint(lsn)?;
+        append(&mut record)?;
+        record.finish()?;
         Ok(())
     }
 }
