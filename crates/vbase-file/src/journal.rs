@@ -82,12 +82,6 @@ impl File {
 }
 
 impl File {
-    fn read_buffer(&mut self) -> Result<()> {
-        self.length = self.file.read_exact_until_end(&mut self.buffer)?;
-        self.offset = 0;
-        Ok(())
-    }
-
     fn read_fragment(&mut self) -> Result<Option<FragmentKind>> {
         let remain = BLOCK_SIZE - (self.offset % BLOCK_SIZE);
         if remain < HEADER_SIZE {
@@ -95,10 +89,12 @@ impl File {
             self.offset += remain;
         }
         if self.offset >= self.length {
-            self.read_buffer()?;
-            if self.length == 0 {
+            let n = self.file.read_until_end(&mut self.buffer)?;
+            if n == 0 {
                 return Ok(None);
             }
+            self.length = n;
+            self.offset = 0;
         }
         if self.length - self.offset < HEADER_SIZE {
             return self.path().corrupted("incomplete fragment");

@@ -137,12 +137,12 @@ pub trait LockedFile: Send + Sync {}
 
 /// A file opened for positional reads.
 pub trait PositionalFile: Send + Sync {
-    /// Reads some bytes into `buf` from the file at `offset`.
+    /// Reads some bytes into `buf` from the file `offset`.
     ///
     /// Returns the number of bytes read.
     fn read(&self, buf: &mut [u8], offset: u64) -> Result<usize>;
 
-    /// Reads the exact number of bytes to fill `buf` from the file at `offset`.
+    /// Reads the exact number of bytes to fill `buf` from the file `offset`.
     fn read_exact(&self, buf: &mut [u8], mut offset: u64) -> Result<()> {
         let mut len = 0;
         while len < buf.len() {
@@ -187,11 +187,10 @@ pub trait SequentialFile: Send + Sync {
         Ok(())
     }
 
-    /// Reads the exact number of bytes to fill `buf` from the file,
-    /// or until the end of the file.
+    /// Reads until the end of the file to fill `buf`.
     ///
     /// Returns the number of bytes read.
-    fn read_exact_until_end(&mut self, buf: &mut [u8]) -> Result<usize> {
+    fn read_until_end(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut len = 0;
         while len < buf.len() {
             match self.read(&mut buf[len..]) {
