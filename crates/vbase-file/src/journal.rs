@@ -14,12 +14,18 @@
 //!
 //! | Checksum (4B) | Size (2B) | Kind (1B) | Data |
 
+use std::ops::Range;
+
 use vbase_env::SequentialFile as _;
 use vbase_env::SequentialFileWriter as _;
 use vbase_env::boxed::SequentialFile;
 use vbase_env::boxed::SequentialFileWriter;
+use vbase_util::codec::BytesEncoder;
+use vbase_util::codec::Decode;
 use vbase_util::codec::Decoder;
+use vbase_util::codec::Encode;
 use vbase_util::codec::Encoder;
+use vbase_util::codec::Varint;
 use vbase_util::crc32::checksum_combined;
 
 use crate::Result;
@@ -103,7 +109,7 @@ impl File {
         let mut dec = &self.buffer[self.offset..self.length];
         let crc = dec.decode::<u32>();
         let size = dec.decode::<u16>() as usize;
-        let kind = FragmentKind::from(dec.decode::<u8>());
+        let kind = dec.decode::<FragmentKind>();
         if dec.len() < size {
             return self.path().corrupted(format!(
                 "fragment size mismatch (expected {}, got {})",
@@ -128,12 +134,14 @@ impl File {
 /// A sequential journal file writer.
 pub struct FileWriter {
     file: SequentialFileWriter,
-    /// A buffer for caching data before flushing to the file.
+    /// A buffer for building fragments.
     buffer: Box<[u8]>,
     /// The current offset in the buffer.
     offset: usize,
-    /// The current length of the buffer.
-    length: usize,
+    /// The range of the current fragment in the buffer.
+    fragment: Range<usize>,
+    /// Whether the current fragment is the first fragment of a record.
+    is_first_fragment: bool,
 }
 
 impl FileWriter {
@@ -142,7 +150,8 @@ impl FileWriter {
             file,
             buffer: vec![0; BUFFER_SIZE].into_boxed_slice(),
             offset: 0,
-            length: 0,
+            fragment: 0..0,
+            is_first_fragment: true,
         }
     }
 
@@ -153,7 +162,7 @@ impl FileWriter {
 
     /// Returns the size of the file.
     pub fn size(&self) -> u64 {
-        self.file.offset() + (self.length - self.offset) as u64
+        self.file.offset() + (self.fragment.end - self.offset) as u64
     }
 
     /// Synchronizes all data to the file.
@@ -163,77 +172,112 @@ impl FileWriter {
 
     /// Writes a record to the file.
     pub fn write<T: AsRef<[u8]>>(&mut self, record: T) -> Result<()> {
-        self.write_part(record.as_ref(), true, true)?;
-        self.flush()
+        let mut w = self.record();
+        w.append(record.as_ref())?;
+        w.finish()
     }
 
-    /// Writes a multi-part record to the file.
-    ///
-    /// This is useful to avoid extra copies when the record is not contiguous.
-    pub fn write_vectored<T: AsRef<[u8]>>(&mut self, parts: &[T]) -> Result<()> {
-        for (i, part) in parts.iter().enumerate() {
-            self.write_part(part.as_ref(), i == 0, i == parts.len() - 1)?;
-        }
-        self.flush()
+    /// Returns a record writer.
+    pub fn record(&mut self) -> RecordWriter<'_> {
+        RecordWriter { file: self }
     }
 }
 
 impl FileWriter {
     fn flush(&mut self) -> Result<()> {
-        if self.offset < self.length {
-            self.file
-                .write_exact(&self.buffer[self.offset..self.length])?;
+        assert!(
+            self.fragment.is_empty(),
+            "cannot flush with started fragment"
+        );
+        let range = self.offset..self.fragment.start;
+        if !range.is_empty() {
+            self.file.write_exact(&self.buffer[range])?;
             // Adjust the offset for the last block.
             self.offset = (self.file.offset() % BLOCK_SIZE as u64) as usize;
-            self.length = self.offset;
+            self.fragment = self.offset..self.offset;
         }
         Ok(())
     }
 
-    fn write_part(&mut self, part: &[u8], mut is_first: bool, is_last: bool) -> Result<()> {
-        let mut left = part;
-        while !left.is_empty() {
-            let size = self.spare_fragment_size()?;
-            let size = left.len().min(size);
-            let data = left.split_off(..size).unwrap();
-            let kind = match (is_first, is_last && left.is_empty()) {
-                (true, true) => FragmentKind::Full,
-                (true, false) => FragmentKind::First,
-                (false, true) => FragmentKind::Last,
-                (false, false) => FragmentKind::Middle,
-            };
-            is_first = false;
-            self.write_fragment(kind, data)?;
+    /// Appends data to the current record.
+    fn append(&mut self, mut data: &[u8]) -> Result<()> {
+        loop {
+            if self.fragment.is_empty() {
+                self.start_fragment()?;
+            }
+            let end = self.fragment.end;
+            let len = BLOCK_SIZE - (end % BLOCK_SIZE);
+            let len = data.len().min(len);
+            let buf = data.split_off(..len).unwrap();
+            self.buffer[end..end + buf.len()].copy_from_slice(buf);
+            self.fragment.end += buf.len();
+            if data.is_empty() {
+                break;
+            }
+            self.build_fragment(false);
         }
         Ok(())
     }
 
-    fn write_fragment(&mut self, kind: FragmentKind, data: &[u8]) -> Result<()> {
-        let mut enc = &mut self.buffer[self.length..];
-        enc.encode(kind.checksum_with(data));
-        enc.encode(data.len() as u16);
-        enc.encode(kind as u8);
-        enc.append(data);
-        self.length += HEADER_SIZE + data.len();
-        if self.length == self.buffer.len() {
-            self.flush()?;
-        }
-        Ok(())
-    }
-
-    fn spare_fragment_size(&mut self) -> Result<usize> {
-        let mut remain = BLOCK_SIZE - (self.length % BLOCK_SIZE);
+    /// Starts a new fragment.
+    fn start_fragment(&mut self) -> Result<()> {
+        let offset = self.fragment.start;
+        let remain = BLOCK_SIZE - (offset % BLOCK_SIZE);
         if remain < HEADER_SIZE {
             // Pad the remaining space in the block with zeros.
-            self.buffer[self.length..self.length + remain].fill(0);
-            self.length += remain;
-            remain = BLOCK_SIZE;
+            self.buffer[offset..offset + remain].fill(0);
+            self.fragment.start += remain;
         }
-        if self.length == self.buffer.len() {
+        if self.fragment.start == self.buffer.len() {
             self.flush()?;
-            remain = BLOCK_SIZE;
         }
-        Ok(remain - HEADER_SIZE)
+        self.fragment.end = self.fragment.start + HEADER_SIZE;
+        Ok(())
+    }
+
+    // Builds the current fragment.
+    fn build_fragment(&mut self, is_last: bool) {
+        let kind = match (self.is_first_fragment, is_last) {
+            (true, true) => FragmentKind::Full,
+            (true, false) => FragmentKind::First,
+            (false, true) => FragmentKind::Last,
+            (false, false) => FragmentKind::Middle,
+        };
+        let (mut enc, data) = self.buffer[self.fragment.clone()].split_at_mut(HEADER_SIZE);
+        enc.encode(kind.checksum_with(data));
+        enc.encode(data.len() as u16);
+        enc.encode(kind);
+        self.fragment.start = self.fragment.end;
+        self.is_first_fragment = is_last;
+    }
+}
+
+pub struct RecordWriter<'a> {
+    file: &'a mut FileWriter,
+}
+
+impl<'a> RecordWriter<'a> {
+    pub fn new(file: &'a mut FileWriter) -> Self {
+        Self { file }
+    }
+
+    /// Appends data to the record.
+    pub fn append(&mut self, data: &[u8]) -> Result<()> {
+        self.file.append(data)
+    }
+
+    /// Appends a varint to the record.
+    pub fn append_varint<T: Varint>(&mut self, value: T) -> Result<()> {
+        let mut buf = [0; 32];
+        let mut enc = BytesEncoder::new(&mut buf);
+        enc.encode_varint(value);
+        self.file.append(enc.encoded_bytes())
+    }
+
+    /// Finishes the record.
+    pub fn finish(self) -> Result<()> {
+        self.file.build_fragment(true);
+        self.file.flush()
     }
 }
 
@@ -269,6 +313,22 @@ impl From<u8> for FragmentKind {
     }
 }
 
+impl Encode for FragmentKind {
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
+        enc.put(self as u8);
+    }
+}
+
+impl<'de> Decode<'de> for FragmentKind {
+    fn decode_from<D: Decoder<'de>>(dec: &mut D) -> Self {
+        dec.pop().into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use vbase_env::boxed::Dir;
@@ -294,18 +354,20 @@ mod tests {
             for record in &records {
                 file.write(record)?;
             }
-            file.write_vectored(&["foo"])?;
-            file.write_vectored(&["foo", "bar"])?;
-            file.write_vectored(&["foo", "bar", "baz"])?;
+            let mut record = file.record();
+            record.append_varint(6usize)?;
+            record.append(b"foo")?;
+            record.append(b"bar")?;
+            record.finish()?;
         }
         {
             let mut file = dir.open_sequential_file(name).map(File::new)?;
             for record in &records {
                 assert_eq!(file.read()?, Some(record.as_slice()));
             }
-            assert_eq!(file.read()?, Some("foo".as_bytes()));
-            assert_eq!(file.read()?, Some("foobar".as_bytes()));
-            assert_eq!(file.read()?, Some("foobarbaz".as_bytes()));
+            let mut record = Vec::new();
+            record.encode(b"foobar".as_slice());
+            assert_eq!(file.read()?, Some(record.as_slice()));
             assert_eq!(file.read()?, None);
         }
         Ok(())
