@@ -54,6 +54,9 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     }
 }
 
+unsafe impl<const ALIGN: usize> Send for Buffer<ALIGN> {}
+unsafe impl<const ALIGN: usize> Sync for Buffer<ALIGN> {}
+
 impl<const ALIGN: usize> Drop for Buffer<ALIGN> {
     fn drop(&mut self) {
         if self.size != 0 {
