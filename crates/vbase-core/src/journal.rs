@@ -15,6 +15,10 @@ impl Journal {
         Self(File::new(file))
     }
 
+    pub(crate) fn path(&self) -> &str {
+        self.0.path()
+    }
+
     /// Reads a batch from the file.
     pub(crate) fn read(&mut self) -> Result<Option<(u64, &[u8])>> {
         match self.0.read()? {

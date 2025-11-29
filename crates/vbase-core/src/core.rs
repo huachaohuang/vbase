@@ -108,7 +108,7 @@ impl Core {
         for (name, open) in builder.engines.drain() {
             let (id, dir) = match desc.engines.iter().find(|e| e.name == name) {
                 Some(engine) => {
-                    info!("open engine {} id {}", engine.name, engine.id);
+                    info!("open engine {} with id {}", engine.name, engine.id);
                     let id = engine.id;
                     let dir = root.open_engine(id)?;
                     (id, dir)
@@ -119,7 +119,7 @@ impl Core {
                         id,
                         name: name.clone(),
                     };
-                    info!("create engine {} id {}", engine.name, engine.id);
+                    info!("create engine {} with id {}", engine.name, engine.id);
                     desc.last_id = id;
                     desc.engines.push(engine);
                     let dir = root.create_engine(id)?;
@@ -248,10 +248,8 @@ struct Engines(HashMap<u64, Box<dyn EngineHandle>>);
 
 impl Engines {
     /// Finds an engine.
-    fn find(&self, name: &str) -> Option<&dyn EngineHandle> {
-        self.0
-            .values()
-            .find_map(|h| (h.name() == name).then_some(h.as_ref()))
+    fn find(&self, name: &str) -> Option<&Box<dyn EngineHandle>> {
+        self.0.values().find(|h| h.name() == name)
     }
 
     /// Writes a batch to engines.
@@ -301,11 +299,23 @@ impl Recover {
     }
 
     fn recover(&mut self) -> Result<()> {
-        let journals = self.journals_to_recover()?;
+        let min_lsn = self.engines.min_last_lsn();
+        let journals = self.journals_to_recover(min_lsn)?;
+        self.last_lsn = min_lsn;
+
         for id in journals.iter().cloned() {
             info!("recover from journal {id}");
             let mut journal = self.root.open_journal(id)?;
             while let Some((lsn, batch)) = journal.read()? {
+                if lsn <= min_lsn {
+                    continue;
+                }
+                if lsn != self.last_lsn + 1 {
+                    return journal.path().corrupted(format!(
+                        "unexpected LSN {}, the previous LSN is {}",
+                        lsn, self.last_lsn,
+                    ));
+                }
                 self.engines.recover(lsn, batch);
                 self.last_lsn = lsn;
             }
@@ -330,9 +340,8 @@ impl Recover {
     }
 
     /// Returns the journal files that need to be recovered.
-    fn journals_to_recover(&self) -> Result<Vec<u64>> {
+    fn journals_to_recover(&self, min_lsn: u64) -> Result<Vec<u64>> {
         let list = self.root.list()?;
-        let min_lsn = self.engines.min_last_lsn();
         let mut iter = list.journals.into_iter().peekable();
         let mut first = None;
         while let Some(id) = iter.next_if(|&id| id <= min_lsn) {
