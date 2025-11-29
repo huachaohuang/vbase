@@ -4,6 +4,7 @@ use super::Decoder;
 
 /// A helper trait to implement [`Decoder`].
 trait Take {
+    /// Takes `len` bytes and returns a pointer to the start of the taken bytes.
     fn take(&mut self, len: usize) -> *const u8;
 }
 

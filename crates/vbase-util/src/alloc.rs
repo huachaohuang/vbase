@@ -20,9 +20,9 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
 
     /// Allocates a buffer with the given `size`.
     ///
-    /// # Panics
+    /// # Aborts
     ///
-    /// Panics if the allocation fails.
+    /// Aborts if the allocation fails because of OOM.
     ///
     /// # Errors
     ///
@@ -44,7 +44,7 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     }
 
     /// Returns the mutable pointer to the buffer.
-    pub fn as_mut_ptr(&self) -> *mut u8 {
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr
     }
 
@@ -74,10 +74,14 @@ impl<const ALIGN: usize> Default for Buffer<ALIGN> {
     }
 }
 
-/// An error indicating that a layout could not be created.
-#[allow(dead_code)]
+/// An error for malformed layouts.
 #[derive(Clone, Debug)]
-pub struct LayoutError(usize, usize);
+pub struct LayoutError {
+    #[allow(dead_code)]
+    size: usize,
+    #[allow(dead_code)]
+    align: usize,
+}
 
 /// Creates a layout with the given `size` and `align`.
 ///
@@ -89,9 +93,9 @@ pub struct LayoutError(usize, usize);
 /// [`alloc::GlobalAlloc::alloc`] for more details.
 pub fn layout(size: usize, align: usize) -> Result<Layout, LayoutError> {
     if size == 0 {
-        return Err(LayoutError(size, align));
+        return Err(LayoutError { size, align });
     }
-    Layout::from_size_align(size, align).map_err(|_| LayoutError(size, align))
+    Layout::from_size_align(size, align).map_err(|_| LayoutError { size, align })
 }
 
 /// Same as [`layout`], but does not check for errors.

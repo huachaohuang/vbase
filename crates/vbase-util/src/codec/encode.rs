@@ -14,6 +14,7 @@ impl Encoder for Vec<u8> {
 
 /// A helper trait to implement [`Encoder`].
 trait Take {
+    /// Takes `len` bytes and returns a pointer to the start of the taken bytes.
     fn take(&mut self, len: usize) -> *mut u8;
 }
 

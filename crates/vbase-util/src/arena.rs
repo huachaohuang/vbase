@@ -48,8 +48,8 @@ impl<const ALIGN: usize> Arena<ALIGN> {
         let offset = self.offset.fetch_add(size64, Relaxed);
         if offset + size64 <= self.buf.size() as u64 {
             unsafe {
-                let ptr = self.buf.as_mut_ptr().add(offset as usize);
-                return NonNull::new_unchecked(ptr);
+                let ptr = self.buf.as_ptr().add(offset as usize);
+                return NonNull::new_unchecked(ptr.cast_mut());
             }
         }
         let layout = layout(size, ALIGN).unwrap();
