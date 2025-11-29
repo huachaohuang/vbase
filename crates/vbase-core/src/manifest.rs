@@ -19,17 +19,17 @@ impl Desc {
     }
 
     pub(crate) fn decode_with_checksum(buf: &[u8]) -> Result<Self, String> {
-        let (data, mut crc) = buf
+        let (message, mut crc) = buf
             .split_at_checked(buf.len() - 4)
             .ok_or_else(|| format!("invalid size {}", buf.len()))?;
-        let checksum = checksum(data);
+        let checksum = checksum(message);
         let expected = u32::decode_from(&mut crc);
         if checksum != expected {
             return Err(format!(
                 "checksum mismatch (expected {expected}, got {checksum})"
             ));
         }
-        Self::decode(data).map_err(|e| format!("{e}"))
+        Self::decode(message).map_err(|e| format!("{e}"))
     }
 }
 

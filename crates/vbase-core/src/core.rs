@@ -324,8 +324,7 @@ impl Recover {
         let max_lsn = self.engines.max_last_lsn();
         if self.last_lsn < max_lsn {
             return self.root.path().corrupted(format!(
-                "the last LSN {} in journal files is less than \
-                the maximum last LSN {} in engines, \
+                "the last LSN {} in journal files is less than the last LSN {} in engines, \
                 which means that some journal files are missing or corrupted, \
                 so we can not recover to a consistent state",
                 self.last_lsn, max_lsn,
