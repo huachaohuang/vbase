@@ -58,7 +58,7 @@ pub struct EngineHandle {
 }
 
 impl EngineHandle {
-    fn open(id: u64, dir: Dir) -> Result<Self> {
+    fn open(engine_id: u64, dir: Dir) -> Result<Self> {
         let root = RootDir::new(dir);
 
         // Load the current manifest.
@@ -71,9 +71,9 @@ impl EngineHandle {
         };
 
         let mut buckets = HashMap::new();
-        for bucket in desc.buckets.clone() {
-            let handle = BucketHandle::new(bucket.id, id);
-            buckets.insert(bucket.name, handle.into());
+        for (&id, bucket) in &desc.buckets {
+            let handle = BucketHandle::new(id, engine_id);
+            buckets.insert(bucket.name.clone(), handle.into());
         }
 
         // Switch to a new manifest.
@@ -93,7 +93,7 @@ impl EngineHandle {
         }
 
         Ok(Self {
-            id,
+            id: engine_id,
             root,
             next_id: AtomicU64::new(last_id + 1),
             current: Atomic::new(Current::new()),
@@ -167,14 +167,11 @@ impl internal::EngineHandle for EngineHandle {
         }
 
         let id = self.next_id();
-        let desc = BucketDesc {
-            id,
-            name: name.into(),
-        };
+        let desc = BucketDesc::new(name.into());
         info!("create bucket {name} with id {id}");
         let mut edit = Edit::default();
         edit.last_id = id;
-        edit.add_buckets.push(desc);
+        edit.add_buckets.insert(id, desc);
         self.update_manifest(edit)?;
 
         let guard = &epoch::pin();

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use prost::Message;
 use vbase_engine::env::boxed::SequentialFile;
 use vbase_engine::env::boxed::SequentialFileWriter;
@@ -12,16 +14,16 @@ use crate::error::Corrupted;
 pub(crate) struct Desc {
     #[prost(tag = "1", uint64)]
     pub(crate) last_id: u64,
-    #[prost(tag = "2", repeated, message)]
-    pub(crate) buckets: Vec<BucketDesc>,
+    #[prost(tag = "2", map = "uint64, message")]
+    pub(crate) buckets: HashMap<u64, BucketDesc>,
 }
 
 impl Desc {
-    fn merge(&mut self, mut edit: Edit) {
+    fn merge(&mut self, edit: Edit) {
         self.last_id = self.last_id.max(edit.last_id);
-        self.buckets.append(&mut edit.add_buckets);
+        self.buckets.extend(edit.add_buckets);
         for id in edit.delete_buckets {
-            self.buckets.retain(|desc| desc.id != id);
+            self.buckets.remove(&id);
         }
     }
 }
@@ -31,19 +33,58 @@ impl Desc {
 pub(crate) struct Edit {
     #[prost(tag = "1", uint64)]
     pub(crate) last_id: u64,
-    #[prost(tag = "2", repeated, message)]
-    pub(crate) add_buckets: Vec<BucketDesc>,
+    #[prost(tag = "2", map = "uint64, message")]
+    pub(crate) add_buckets: HashMap<u64, BucketDesc>,
     #[prost(tag = "3", repeated, uint64)]
     pub(crate) delete_buckets: Vec<u64>,
+    #[prost(tag = "4", map = "uint64, message")]
+    pub(crate) update_buckets: HashMap<u64, BucketEdit>,
+}
+
+#[derive(Message)]
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct RangeDesc {
+    #[prost(tag = "1", uint64)]
+    pub(crate) level: u64,
 }
 
 #[derive(Message)]
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct BucketDesc {
-    #[prost(tag = "1", uint64)]
-    pub(crate) id: u64,
-    #[prost(tag = "2", string)]
+    #[prost(tag = "1", string)]
     pub(crate) name: String,
+    #[prost(tag = "2", map = "uint64, message")]
+    pub(crate) ranges: HashMap<u64, RangeDesc>,
+}
+
+impl BucketDesc {
+    pub(crate) fn new(name: String) -> Self {
+        Self {
+            name,
+            ranges: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn merge(&mut self, edit: BucketEdit) {
+        if let Some(name) = edit.name {
+            self.name = name;
+        }
+        self.ranges.extend(edit.add_ranges);
+        for id in edit.delete_ranges {
+            self.ranges.remove(&id);
+        }
+    }
+}
+
+#[derive(Message)]
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct BucketEdit {
+    #[prost(tag = "1", optional, string)]
+    pub(crate) name: Option<String>,
+    #[prost(tag = "2", map = "uint64, message")]
+    pub(crate) add_ranges: HashMap<u64, RangeDesc>,
+    #[prost(tag = "3", repeated, uint64)]
+    pub(crate) delete_ranges: Vec<u64>,
 }
 
 /// A manifest file reader.
