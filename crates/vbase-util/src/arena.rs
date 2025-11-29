@@ -1,9 +1,9 @@
+use std::alloc::Layout;
 use std::ptr::NonNull;
 
 use bumpalo::Bump;
 
 use crate::alloc::Buffer;
-use crate::alloc::layout;
 use crate::sync::Mutex;
 use crate::sync::atomic::AtomicU64;
 use crate::sync::atomic::Ordering::Relaxed;
@@ -12,7 +12,11 @@ use crate::sync::atomic::Ordering::Relaxed;
 ///
 /// The arena preallocates a buffer for fast allocations. When the preallocated
 /// buffer is full, it falls back to a bump allocator.
-pub struct Arena<const ALIGN: usize> {
+///
+/// # Aborts
+///
+/// Aborts if internal allocation fails because of OOM.
+pub struct Arena<const ALIGN: usize = 1> {
     buf: Buffer<ALIGN>,
     offset: AtomicU64,
     fallback: Mutex<Bump>,
@@ -23,8 +27,7 @@ impl<const ALIGN: usize> Arena<ALIGN> {
     ///
     /// # Panics
     ///
-    /// Panics if `size` and `ALIGN` do not form a valid layout, or if the
-    /// allocation fails.
+    /// Panics if `size` and `ALIGN` do not form a valid [`Layout`].
     pub fn new(size: usize) -> Self {
         Self {
             buf: Buffer::alloc(size).unwrap(),
@@ -39,8 +42,7 @@ impl<const ALIGN: usize> Arena<ALIGN> {
     ///
     /// # Panics
     ///
-    /// Panics if `size` and `ALIGN` do not form a valid layout, or if the
-    /// allocation fails.
+    /// Panics if `size` and `ALIGN` do not form a valid [`Layout`].
     pub fn alloc(&self, size: usize) -> NonNull<u8> {
         // Cast to `u64` to avoid overflow.
         let size64 = size as u64;
@@ -52,10 +54,18 @@ impl<const ALIGN: usize> Arena<ALIGN> {
                 return NonNull::new_unchecked(ptr.cast_mut());
             }
         }
-        let layout = layout(size, ALIGN).unwrap();
+        let layout = Layout::from_size_align(size, ALIGN).unwrap();
         self.fallback.lock().unwrap().alloc_layout(layout)
     }
 
+    /// Allocates a value and initializes it with `value`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the following conditions are not met:
+    ///
+    /// - The alignment of `T` must equal to `ALIGN`.
+    /// - The size of `value` and `ALIGN` must form a valid [`Layout`].
     pub fn alloc_value<T>(&self, value: T) -> NonNull<T> {
         assert_eq!(align_of::<T>(), ALIGN);
         let ptr = self.alloc(size_of::<T>()).cast::<T>();
@@ -65,6 +75,16 @@ impl<const ALIGN: usize> Arena<ALIGN> {
         ptr
     }
 
+    /// Allocates a slice of `len` elements.
+    ///
+    /// Returns a pointer to an uninitialized slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the following conditions are not met:
+    ///
+    /// - The alignment of `T` must equal to `ALIGN`.
+    /// - The total size of the slice and `ALIGN` must form a valid [`Layout`].
     pub fn alloc_slice<T>(&self, len: usize) -> NonNull<[T]> {
         assert_eq!(align_of::<T>(), ALIGN);
         let Some(size) = size_of::<T>().checked_mul(len) else {
@@ -92,12 +112,12 @@ mod tests {
         const ALIGN: usize = 8;
         let arena = Arena::<ALIGN>::new(SIZE);
 
-        // Acatual allocation size should be 8.
+        // Actual allocation size should be 8.
         let ptr = arena.alloc(1);
         assert_eq!(ptr.align_offset(ALIGN), 0);
         assert_eq!(arena.allocated_size(), 8);
 
-        // Acatual allocation size should be 56.
+        // Actual allocation size should be 56.
         let ptr = arena.alloc(50);
         assert_eq!(ptr.align_offset(ALIGN), 0);
         assert_eq!(arena.allocated_size(), 64);
@@ -106,5 +126,13 @@ mod tests {
         let ptr = arena.alloc(SIZE);
         assert_eq!(ptr.align_offset(ALIGN), 0);
         assert_eq!(arena.allocated_size(), SIZE + 64);
+
+        let value = arena.alloc_value(42u64);
+        assert_eq!(unsafe { value.as_ref() }, &42u64);
+
+        let slice = arena.alloc_slice::<u64>(0);
+        assert_eq!(unsafe { slice.as_ref() }, &[]);
+        let slice = arena.alloc_slice::<u64>(8);
+        assert_eq!(unsafe { slice.as_ref().len() }, 8);
     }
 }

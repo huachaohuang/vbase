@@ -1,10 +1,11 @@
 use std::alloc;
 use std::alloc::Layout;
+use std::alloc::LayoutError;
 use std::alloc::handle_alloc_error;
 use std::ptr::null_mut;
 
 /// A buffer allocated with a specific alignment.
-pub struct Buffer<const ALIGN: usize> {
+pub struct Buffer<const ALIGN: usize = 1> {
     ptr: *mut u8,
     size: usize,
 }
@@ -26,9 +27,12 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     ///
     /// # Errors
     ///
-    /// Returns an error if `size` and `ALIGN` do not form a valid layout.
+    /// Returns an error if `size` and `ALIGN` do not form a valid [`Layout`].
     pub fn alloc(size: usize) -> Result<Self, LayoutError> {
-        let layout = layout(size, ALIGN)?;
+        if size == 0 {
+            return Ok(Self::new());
+        }
+        let layout = Layout::from_size_align(size, ALIGN)?;
         unsafe {
             let ptr = alloc::alloc(layout);
             if ptr.is_null() {
@@ -61,7 +65,7 @@ impl<const ALIGN: usize> Drop for Buffer<ALIGN> {
     fn drop(&mut self) {
         if self.size != 0 {
             unsafe {
-                let layout = layout_unchecked(self.size, ALIGN);
+                let layout = Layout::from_size_align_unchecked(self.size, ALIGN);
                 alloc::dealloc(self.ptr, layout);
             }
         }
@@ -72,37 +76,4 @@ impl<const ALIGN: usize> Default for Buffer<ALIGN> {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// An error for malformed layouts.
-#[derive(Clone, Debug)]
-pub struct LayoutError {
-    #[allow(dead_code)]
-    size: usize,
-    #[allow(dead_code)]
-    align: usize,
-}
-
-/// Creates a layout with the given `size` and `align`.
-///
-/// # Errors
-///
-/// Returns an error if `size` is zero, in addition to the error conditions in
-/// [`Layout::from_size_align`]. This is to prevent allocations with a
-/// zero-sized layout, which is Undefined Behavior. See
-/// [`alloc::GlobalAlloc::alloc`] for more details.
-pub fn layout(size: usize, align: usize) -> Result<Layout, LayoutError> {
-    if size == 0 {
-        return Err(LayoutError { size, align });
-    }
-    Layout::from_size_align(size, align).map_err(|_| LayoutError { size, align })
-}
-
-/// Same as [`layout`], but does not check for errors.
-///
-/// # Safety
-///
-/// The caller must ensure the error conditions in [`layout`] do not occur.
-pub unsafe fn layout_unchecked(size: usize, align: usize) -> Layout {
-    unsafe { Layout::from_size_align_unchecked(size, align) }
 }
