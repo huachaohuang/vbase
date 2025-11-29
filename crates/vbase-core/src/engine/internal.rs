@@ -25,12 +25,14 @@ pub trait EngineHandle: Send + Sync + 'static {
     fn name(&self) -> &str;
 
     /// Writes a batch with the given LSN.
+    ///
+    /// Writes to a deleted bucket should be ignored.
     fn write(&self, lsn: u64, batch: &[u8]);
 
     /// Returns the last LSN written to the engine.
     fn last_lsn(&self) -> u64;
 
-    /// Gets a bucket.
+    /// Returns a bucket if it exists.
     ///
     /// # Errors
     ///

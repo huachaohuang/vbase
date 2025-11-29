@@ -91,7 +91,7 @@ impl Database {
         self.0.write(batch, options)
     }
 
-    /// Gets a bucket from the engine.
+    /// Gets a bucket from the engine if it exists.
     ///
     /// # Errors
     ///

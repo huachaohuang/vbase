@@ -364,6 +364,8 @@ impl WriteBatch {
     }
 
     /// Returns a write batch for the bucket.
+    ///
+    /// Writes to a deleted bucket will be ignored.
     pub fn bucket<B: Bucket>(&mut self, bucket: &B) -> B::WriteBatch<'_> {
         let handle = bucket.handle();
         let buffer = self
