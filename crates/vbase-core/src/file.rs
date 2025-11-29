@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::io::ErrorKind;
 
-use prost::Message;
 use vbase_env::boxed::Dir;
 use vbase_env::boxed::LockedFile;
 
@@ -20,8 +19,8 @@ pub(crate) struct FileSet {
 
 pub(crate) struct RootDir {
     dir: Dir,
-    #[expect(unused)]
-    lock: LockedFile,
+    #[allow(dead_code)]
+    lock: LockedFile, // to keep the lock file alive
 }
 
 impl RootDir {
@@ -90,16 +89,17 @@ impl RootDir {
 
     pub(crate) fn read_manifest(&self) -> Result<Option<Desc>> {
         match self.dir.read_file(Self::MANIFEST) {
-            Ok(x) => Desc::decode(x.as_slice())
+            Ok(x) => Desc::decode_with_checksum(x.as_slice())
                 .map(Some)
-                .or_else(|e| Self::MANIFEST.corrupted(format!("{e}"))),
+                .or_else(|e| Self::MANIFEST.corrupted(e)),
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
 
     pub(crate) fn switch_manifest(&self, desc: &Desc) -> Result<()> {
-        self.dir.write_file(Self::TEMP, &desc.encode_to_vec())?;
+        let data = desc.encode_with_checksum();
+        self.dir.write_file(Self::TEMP, &data)?;
         self.dir.rename_file(Self::TEMP, Self::MANIFEST)?;
         Ok(())
     }

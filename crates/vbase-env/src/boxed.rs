@@ -197,7 +197,7 @@ impl fmt::Debug for Dir {
 /// A wrapper for [`crate::LockedFile`] objects.
 pub struct LockedFile {
     #[allow(dead_code)]
-    file: Box<dyn crate::LockedFile>,
+    file: Box<dyn crate::LockedFile>, // to keep the lock file alive
 }
 
 impl crate::LockedFile for LockedFile {}
