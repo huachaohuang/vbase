@@ -235,7 +235,7 @@ impl FileWriter {
         Ok(())
     }
 
-    // Builds the current fragment.
+    /// Builds the current fragment.
     fn build_fragment(&mut self, is_last: bool) {
         let kind = match (self.is_first_fragment, is_last) {
             (true, true) => FragmentKind::Full,
@@ -252,15 +252,12 @@ impl FileWriter {
     }
 }
 
+/// A journal record writer for multi-part records.
 pub struct RecordWriter<'a> {
     file: &'a mut FileWriter,
 }
 
 impl<'a> RecordWriter<'a> {
-    pub fn new(file: &'a mut FileWriter) -> Self {
-        Self { file }
-    }
-
     /// Appends data to the record.
     pub fn append(&mut self, data: &[u8]) -> Result<()> {
         self.file.append(data)
@@ -268,7 +265,7 @@ impl<'a> RecordWriter<'a> {
 
     /// Appends a varint to the record.
     pub fn append_varint<T: Varint>(&mut self, value: T) -> Result<()> {
-        let mut buf = [0; 32];
+        let mut buf = [0; 16];
         let mut enc = BytesEncoder::new(&mut buf);
         enc.encode_varint(value);
         self.file.append(enc.encoded_bytes())
