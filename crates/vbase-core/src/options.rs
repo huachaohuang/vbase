@@ -25,7 +25,7 @@ impl Builder {
     }
 
     /// Registers an engine.
-    pub fn with_engine<E: Engine>(mut self) -> Self {
+    pub fn engine<E: Engine>(mut self) -> Self {
         let open = |id, dir| E::open(id, dir).map(|h| Box::new(h) as _);
         self.engines.insert(E::NAME.into(), Box::new(open));
         self

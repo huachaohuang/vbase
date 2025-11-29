@@ -21,6 +21,12 @@ impl Builder {
         Self(options::Builder::new())
     }
 
+    /// Registers an engine.
+    pub fn engine<E: Engine>(mut self) -> Self {
+        self.0 = self.0.engine::<E>();
+        self
+    }
+
     /// If true, returns an error if the database already exists.
     ///
     /// Conflicts with [`Self::error_if_not_exist`].
@@ -116,5 +122,107 @@ impl Database {
     /// Returns [`Error::NotExist`] if `name` does not exist.
     pub fn delete_bucket<E: Engine>(&self, name: &str) -> Result<()> {
         self.0.delete_bucket::<E>(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use vbase_tree::Engine;
+
+    use crate::Builder;
+    use crate::Database;
+    use crate::Error;
+    use crate::Options;
+    use crate::Result;
+
+    const PATH: &'static str = "test";
+
+    fn test_database() -> Result<Database> {
+        let options = Options::test()?;
+        Builder::new().engine::<Engine>().open(PATH, options)
+    }
+
+    #[test]
+    fn test_builder() -> Result<()> {
+        let options = Options::test()?;
+        match Builder::new()
+            .error_if_exists(true)
+            .error_if_not_exist(true)
+            .open(PATH, options.clone())
+        {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match Builder::new()
+            .error_if_not_exist(true)
+            .open(PATH, options.clone())
+        {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Builder::new().open(PATH, options.clone())?;
+        match Builder::new()
+            .error_if_exists(true)
+            .open(PATH, options.clone())
+        {
+            Err(Error::Exists(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_open_locked() -> Result<()> {
+        let options = Options::test()?;
+        let _locked = Database::open(PATH, options.clone())?;
+        match Database::open(PATH, options) {
+            Err(Error::Locked(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_unregistered_engine() -> Result<()> {
+        let options = Options::test()?;
+        let db = Database::open(PATH, options)?;
+        match db.bucket::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.create_bucket::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.delete_bucket::<Engine>("test") {
+            Err(Error::InvalidArgument(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_delete_bucket() -> Result<()> {
+        let db = test_database()?;
+        match db.bucket::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        db.create_bucket::<Engine>("test")?;
+        match db.create_bucket::<Engine>("test") {
+            Err(Error::Exists(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        db.bucket::<Engine>("test")?;
+        db.delete_bucket::<Engine>("test")?;
+        match db.delete_bucket::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        match db.bucket::<Engine>("test") {
+            Err(Error::NotExist(_)) => {}
+            x => panic!("unexpected result: {x:?}"),
+        }
+        Ok(())
     }
 }
