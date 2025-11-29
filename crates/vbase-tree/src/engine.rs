@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use crossbeam_epoch as epoch;
+use crossbeam_epoch::Atomic;
+use crossbeam_epoch::Guard;
 use log::info;
 use vbase_engine::engine;
 use vbase_engine::engine::internal;
@@ -21,6 +24,7 @@ use crate::manifest::Desc;
 use crate::manifest::Edit;
 use crate::manifest::Manifest;
 use crate::manifest::ManifestWriter;
+use crate::memtable::MemTable;
 
 const NAME: &str = "Tree";
 
@@ -45,6 +49,8 @@ pub struct EngineHandle {
     root: RootDir,
 
     next_id: AtomicU64,
+
+    current: Atomic<Current>,
 
     buckets: Mutex<HashMap<String, Arc<BucketHandle>>>,
 
@@ -89,14 +95,19 @@ impl EngineHandle {
         Ok(Self {
             id,
             root,
-            buckets: Mutex::new(buckets),
             next_id: AtomicU64::new(last_id + 1),
+            current: Atomic::new(Current::new()),
+            buckets: Mutex::new(buckets),
             manifest: Mutex::new(manifest),
         })
     }
 
     fn next_id(&self) -> u64 {
         self.next_id.fetch_add(1, Relaxed)
+    }
+
+    fn current<'g>(&self, guard: &'g Guard) -> &'g Current {
+        unsafe { self.current.load(Relaxed, guard).deref() }
     }
 
     fn update_manifest(&self, edit: Edit) -> Result<()> {
@@ -123,8 +134,14 @@ impl internal::EngineHandle for EngineHandle {
     }
 
     fn write(&self, lsn: u64, batch: &[u8]) {
+        let guard = &epoch::pin();
+        let current = self.current(guard);
         let mut iter = WriteBatchIter::new(batch);
         while let Some(id) = iter.next_bucket() {
+            let Some(bucket) = current.mem.bucket(id) else {
+                // Ignore deleted buckets.
+                continue;
+            };
             while let Some(record) = iter.next_record() {
                 todo!()
             }
@@ -160,6 +177,10 @@ impl internal::EngineHandle for EngineHandle {
         edit.add_buckets.push(desc);
         self.update_manifest(edit)?;
 
+        let guard = &epoch::pin();
+        let current = self.current(guard);
+        current.mem.add_bucket(id);
+
         let bucket = Arc::new(BucketHandle::new(id, self.id));
         buckets.insert(name.into(), bucket.clone());
         Ok(bucket)
@@ -178,5 +199,17 @@ impl internal::EngineHandle for EngineHandle {
 
         buckets.remove(name);
         Ok(())
+    }
+}
+
+struct Current {
+    mem: MemTable,
+}
+
+impl Current {
+    fn new() -> Self {
+        Self {
+            mem: MemTable::new(1024),
+        }
     }
 }

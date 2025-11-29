@@ -13,6 +13,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+crossbeam-epoch = "0.9.18"
 log = "0.4.28"
 prost = "0.14.1"
 # Workspace dependencies
