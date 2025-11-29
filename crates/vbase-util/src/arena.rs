@@ -30,7 +30,7 @@ impl<const ALIGN: usize> Arena<ALIGN> {
     /// Panics if `size` and `ALIGN` do not form a valid [`Layout`].
     pub fn new(size: usize) -> Self {
         Self {
-            buf: Buffer::alloc(size).unwrap(),
+            buf: Buffer::with_size(size).unwrap(),
             offset: AtomicU64::new(0),
             fallback: Mutex::new(Bump::new()),
         }

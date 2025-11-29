@@ -2,6 +2,8 @@ use std::alloc;
 use std::alloc::Layout;
 use std::alloc::LayoutError;
 use std::alloc::handle_alloc_error;
+use std::mem;
+use std::num::NonZero;
 
 /// A buffer allocated with a specific alignment.
 ///
@@ -30,33 +32,73 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     /// # Errors
     ///
     /// Returns an error if `size` and `ALIGN` do not form a valid [`Layout`].
-    pub fn alloc(size: usize) -> Result<Self, LayoutError> {
-        if size == 0 {
-            return Ok(Self::new());
+    pub fn with_size(size: usize) -> Result<Self, LayoutError> {
+        let mut this = Self::new();
+        if let Some(size) = NonZero::new(size) {
+            this.alloc(size)?;
         }
-        let layout = Layout::from_size_align(size, ALIGN)?;
-        unsafe {
-            let ptr = alloc::alloc(layout);
-            if ptr.is_null() {
-                handle_alloc_error(layout);
-            }
-            Ok(Self { ptr, size })
+        Ok(this)
+    }
+
+    /// Reallocates the buffer to the new size.
+    ///
+    /// # Aborts
+    ///
+    /// Aborts if the allocation fails because of OOM.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `new_size` and `ALIGN` do not form a valid
+    /// [`Layout`].
+    pub fn realloc(&mut self, new_size: usize) -> Result<(), LayoutError> {
+        let Some(size) = NonZero::new(new_size) else {
+            mem::take(self);
+            return Ok(());
+        };
+        if self.size == 0 {
+            return self.alloc(size);
         }
+        let new_layout = Layout::from_size_align(new_size, ALIGN)?;
+        let new_ptr = unsafe { alloc::realloc(self.ptr, self.layout(), new_size) };
+        if new_ptr.is_null() {
+            handle_alloc_error(new_layout);
+        }
+        self.ptr = new_ptr;
+        self.size = new_size;
+        Ok(())
     }
 
     /// Returns the pointer to the buffer.
-    pub fn as_ptr(&self) -> *const u8 {
+    pub const fn as_ptr(&self) -> *const u8 {
         self.ptr
     }
 
     /// Returns the mutable pointer to the buffer.
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+    pub const fn as_mut_ptr(&mut self) -> *mut u8 {
         self.ptr
     }
 
     /// Returns the size of the buffer.
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         self.size
+    }
+}
+
+impl<const ALIGN: usize> Buffer<ALIGN> {
+    fn alloc(&mut self, size: NonZero<usize>) -> Result<(), LayoutError> {
+        let size = size.get();
+        let layout = Layout::from_size_align(size, ALIGN)?;
+        let ptr = unsafe { alloc::alloc(layout) };
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+        self.ptr = ptr;
+        self.size = size;
+        Ok(())
+    }
+
+    fn layout(&self) -> Layout {
+        unsafe { Layout::from_size_align_unchecked(self.size, ALIGN) }
     }
 }
 
@@ -67,8 +109,7 @@ impl<const ALIGN: usize> Drop for Buffer<ALIGN> {
     fn drop(&mut self) {
         if self.size != 0 {
             unsafe {
-                let layout = Layout::from_size_align_unchecked(self.size, ALIGN);
-                alloc::dealloc(self.ptr, layout);
+                alloc::dealloc(self.ptr, self.layout());
             }
         }
     }
