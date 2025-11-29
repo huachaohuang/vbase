@@ -187,7 +187,7 @@ pub trait SequentialFile: Send + Sync {
         Ok(())
     }
 
-    /// Reads until the end of the file to fill `buf`.
+    /// Reads available bytes to fill `buf` from the file until EOF.
     ///
     /// Returns the number of bytes read.
     fn read_until_end(&mut self, buf: &mut [u8]) -> Result<usize> {

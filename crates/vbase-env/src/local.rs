@@ -104,7 +104,7 @@ impl Dir for LocalDir {
         let path = self.path.join(name);
         let mut file = fs::File::create(path)?;
         file.write_all(data)?;
-        file.sync_data()?;
+        file.sync_all()?;
         Ok(())
     }
 
