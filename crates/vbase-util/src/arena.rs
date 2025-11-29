@@ -64,10 +64,10 @@ impl<const ALIGN: usize> Arena<ALIGN> {
     ///
     /// Panics if the following conditions are not met:
     ///
-    /// - The alignment of `T` must equal to `ALIGN`.
+    /// - `ALIGN` must be a multiple of the alignment of `T`.
     /// - The size of `value` and `ALIGN` must form a valid [`Layout`].
     pub fn alloc_value<T>(&self, value: T) -> NonNull<T> {
-        assert_eq!(align_of::<T>(), ALIGN);
+        assert!(ALIGN.is_multiple_of(align_of::<T>()));
         let ptr = self.alloc(size_of::<T>()).cast::<T>();
         unsafe {
             ptr.write(value);
@@ -83,10 +83,10 @@ impl<const ALIGN: usize> Arena<ALIGN> {
     ///
     /// Panics if the following conditions are not met:
     ///
-    /// - The alignment of `T` must equal to `ALIGN`.
+    /// - `ALIGN` must be a multiple of the alignment of `T`.
     /// - The total size of the slice and `ALIGN` must form a valid [`Layout`].
     pub fn alloc_slice<T>(&self, len: usize) -> NonNull<[T]> {
-        assert_eq!(align_of::<T>(), ALIGN);
+        assert!(ALIGN.is_multiple_of(align_of::<T>()));
         let Some(size) = size_of::<T>().checked_mul(len) else {
             panic!(
                 "allocate {len} elements of size {} overflows",
@@ -127,12 +127,29 @@ mod tests {
         assert_eq!(ptr.align_offset(ALIGN), 0);
         assert_eq!(arena.allocated_size(), SIZE + 64);
 
-        let value = arena.alloc_value(42u64);
-        assert_eq!(unsafe { value.as_ref() }, &42u64);
+        // Allocate values.
+        let ptr = arena.alloc_value(42u32);
+        assert_eq!(unsafe { ptr.as_ref() }, &42u32);
+        let ptr = arena.alloc_value(42u64);
+        assert_eq!(unsafe { ptr.as_ref() }, &42u64);
 
-        let slice = arena.alloc_slice::<u64>(0);
-        assert_eq!(unsafe { slice.as_ref() }, &[]);
-        let slice = arena.alloc_slice::<u64>(8);
-        assert_eq!(unsafe { slice.as_ref().len() }, 8);
+        // Allocate slices.
+        let ptr = arena.alloc_slice::<u32>(0);
+        assert_eq!(unsafe { ptr.as_ref() }, &[]);
+        let ptr = arena.alloc_slice::<u64>(8);
+        assert_eq!(unsafe { ptr.as_ref().len() }, 8);
+    }
+
+    #[test]
+    fn test_zst() {
+        const ALIGN: usize = 8;
+        let arena = Arena::<ALIGN>::new(0);
+
+        let ptr = arena.alloc(0);
+        assert_eq!(ptr.align_offset(ALIGN), 0);
+        let ptr = arena.alloc_value(());
+        assert_eq!(ptr.align_offset(ALIGN), 0);
+        let ptr = arena.alloc_slice::<()>(8);
+        assert_eq!(ptr.as_ptr().addr() % ALIGN, 0);
     }
 }

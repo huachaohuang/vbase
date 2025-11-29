@@ -2,9 +2,10 @@ use std::alloc;
 use std::alloc::Layout;
 use std::alloc::LayoutError;
 use std::alloc::handle_alloc_error;
-use std::ptr::null_mut;
 
 /// A buffer allocated with a specific alignment.
+///
+/// `ALIGN` specifies the alignment, which must be a power of two.
 pub struct Buffer<const ALIGN: usize = 1> {
     ptr: *mut u8,
     size: usize,
@@ -13,8 +14,9 @@ pub struct Buffer<const ALIGN: usize = 1> {
 impl<const ALIGN: usize> Buffer<ALIGN> {
     /// Creates a null buffer without allocation.
     pub const fn new() -> Self {
+        assert!(ALIGN.is_power_of_two());
         Self {
-            ptr: null_mut(),
+            ptr: ALIGN as _,
             size: 0,
         }
     }
