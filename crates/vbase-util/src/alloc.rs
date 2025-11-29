@@ -4,6 +4,7 @@ use std::alloc::LayoutError;
 use std::alloc::handle_alloc_error;
 use std::mem;
 use std::num::NonZero;
+use std::ptr;
 
 /// A buffer allocated with a specific alignment.
 ///
@@ -18,7 +19,7 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     pub const fn new() -> Self {
         assert!(ALIGN.is_power_of_two());
         Self {
-            ptr: ALIGN as _,
+            ptr: ptr::without_provenance_mut(ALIGN),
             size: 0,
         }
     }
@@ -59,7 +60,12 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
             return self.alloc(size);
         }
         let new_layout = Layout::from_size_align(new_size, ALIGN)?;
-        let new_ptr = unsafe { alloc::realloc(self.ptr, self.layout(), new_size) };
+        let new_ptr = unsafe {
+            // SAFETY:
+            // - `new_size` is non-zero, and `new_layout` is valid.
+            // - `self.size` is non-zero, so `self.ptr` and `self.layout()` must be valid.
+            alloc::realloc(self.ptr, self.layout(), new_size)
+        };
         if new_ptr.is_null() {
             handle_alloc_error(new_layout);
         }
@@ -88,7 +94,10 @@ impl<const ALIGN: usize> Buffer<ALIGN> {
     fn alloc(&mut self, size: NonZero<usize>) -> Result<(), LayoutError> {
         let size = size.get();
         let layout = Layout::from_size_align(size, ALIGN)?;
-        let ptr = unsafe { alloc::alloc(layout) };
+        let ptr = unsafe {
+            // SAFETY: `size` is non-zero.
+            alloc::alloc(layout)
+        };
         if ptr.is_null() {
             handle_alloc_error(layout);
         }

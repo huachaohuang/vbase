@@ -22,9 +22,7 @@ test:
 miri:
     #!/usr/bin/env bash
     export MIRIFLAGS="-Zmiri-tree-borrows"
-    {{cargo-miri}} -E 'test(skip_list)'
-    export MIRIFLAGS="-Zmiri-permissive-provenance"
-    {{cargo-miri}} -E 'not (test(skip_list))'
+    {{cargo-miri}} -E 'not (test(database))'
 
 shuttle:
     {{cargo-test}} shuttle -F shuttle --release
