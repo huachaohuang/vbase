@@ -31,7 +31,7 @@ pub struct SkipList {
 }
 
 impl SkipList {
-    /// Creates a skip list.
+    /// Creates a new [`SkipList`].
     pub const fn new() -> Self {
         Self {
             head: Head::new(),
@@ -173,6 +173,12 @@ impl SkipList {
     }
 }
 
+impl Default for SkipList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// An iterator over a [`SkipList`].
 #[derive(Clone)]
 pub struct SkipListIter<'a, K, V> {
@@ -225,6 +231,7 @@ struct Link<'a> {
 }
 
 /// A special node used as the head of the skip list.
+#[repr(transparent)]
 struct Head([AtomicPtr<Node>; MAX_HEIGHT]);
 
 impl Head {
@@ -244,6 +251,7 @@ impl Head {
 /// | next[n] | ... | next[1] | next[0] | data |
 ///
 /// A node pointer is always pointing to `next[0]` of the node.
+#[repr(transparent)]
 struct Node {
     next: [AtomicPtr<Node>; 1],
 }
@@ -258,10 +266,11 @@ impl Node {
         let size = size_of::<Node>() * height + k.size() + v.size();
         let node = arena.alloc(size).cast::<Node>();
 
-        // In the shuttle model, `AtomicPtr` is not a simple pointer wrapper, so we need
-        // to initialize them here before use.
-        // In non-shuttle model, `AtomicPtr` can be initialized later when the node is
-        // linked the skip list.
+        // In the std mode, `AtomicPtr` can be initialized later
+        // when the node is linked the skip list.
+        //
+        // In the shuttle mode, `AtomicPtr` is not a simple pointer wrapper,
+        // so we need to initialize them here before use.
         #[cfg(feature = "shuttle")]
         for i in 0..height {
             unsafe {
@@ -343,13 +352,13 @@ impl Node {
 const MAX_HEIGHT: usize = 16;
 
 /// The precomputed result of height possibilities.
-const HEIGHT_POSIBILITIES: [u32; MAX_HEIGHT] = height_posibilities();
+const HEIGHT_POSSIBILITIES: [u32; MAX_HEIGHT] = height_possibilities();
 
 /// Returns a random height in `0..MAX_HEIGHT`.
 fn random_height() -> usize {
     let mut i = 0;
     let r = random_u32();
-    for p in HEIGHT_POSIBILITIES {
+    for p in HEIGHT_POSSIBILITIES {
         if r > p {
             break;
         }
@@ -359,16 +368,16 @@ fn random_height() -> usize {
 }
 
 /// Precomputes the height possibilities for random height generation.
-const fn height_posibilities() -> [u32; MAX_HEIGHT] {
+const fn height_possibilities() -> [u32; MAX_HEIGHT] {
     let mut i = 0;
     let mut p = u32::MAX;
-    let mut posibilities = [0; MAX_HEIGHT];
+    let mut possibilities = [0; MAX_HEIGHT];
     while i < MAX_HEIGHT {
-        posibilities[i] = p;
+        possibilities[i] = p;
         i += 1;
         p /= 4;
     }
-    posibilities
+    possibilities
 }
 
 #[cfg(test)]
