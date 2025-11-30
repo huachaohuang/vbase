@@ -490,6 +490,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vbase-tree"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "prost",
+ "vbase-engine",
+]
+
+[[package]]
 name = "vbase-util"
 version = "0.1.0"
 dependencies = [

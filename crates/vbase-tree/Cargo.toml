@@ -1,0 +1,22 @@
+[package]
+name = "vbase-tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+log = "0.4.28"
+prost = "0.14.1"
+# Workspace dependencies
+vbase-engine.workspace = true
+
+[dev-dependencies]
+vbase-engine = { workspace = true, features = ["test"] }
