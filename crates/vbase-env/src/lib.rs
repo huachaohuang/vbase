@@ -3,6 +3,13 @@
 use std::io::ErrorKind;
 use std::io::Result;
 
+#[cfg(feature = "test")]
+mod test;
+#[cfg(feature = "test")]
+pub use test::TestDir;
+#[cfg(feature = "test")]
+pub use test::TestEnv;
+
 mod mock;
 pub use mock::MockDir;
 pub use mock::MockEnv;
@@ -123,11 +130,8 @@ pub trait Dir: Send + Sync {
 
 /// A locked file.
 ///
-/// Dropping the locked file unlocks it as well.
-pub trait LockedFile: Send + Sync {
-    /// Unlocks the file.
-    fn unlock(self) -> Result<()>;
-}
+/// Dropping the locked file unlocks it.
+pub trait LockedFile: Send + Sync {}
 
 /// A file opened for positional reads.
 pub trait PositionalFile: Send + Sync {

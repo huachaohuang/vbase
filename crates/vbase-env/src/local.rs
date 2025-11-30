@@ -133,11 +133,7 @@ impl Dir for LocalDir {
 
 struct LocalFile(fs::File);
 
-impl LockedFile for LocalFile {
-    fn unlock(self) -> Result<()> {
-        self.0.unlock()
-    }
-}
+impl LockedFile for LocalFile {}
 
 impl PositionalFile for LocalFile {
     #[cfg(unix)]

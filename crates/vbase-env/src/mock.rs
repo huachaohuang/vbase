@@ -114,12 +114,7 @@ impl Drop for MockLockedFile {
     }
 }
 
-impl LockedFile for MockLockedFile {
-    fn unlock(self) -> Result<()> {
-        // Unlock on drop.
-        Ok(())
-    }
-}
+impl LockedFile for MockLockedFile {}
 
 struct MockPositionalFile(FileHandle);
 
