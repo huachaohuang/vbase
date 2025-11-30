@@ -1,3 +1,4 @@
+pub mod codec;
 pub mod crc32;
 
 pub use concurrent::*;
