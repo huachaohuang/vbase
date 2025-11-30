@@ -464,6 +464,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vbase-engine"
+version = "0.1.0"
+dependencies = [
+ "vbase-core",
+ "vbase-env",
+ "vbase-file",
+ "vbase-util",
+]
+
+[[package]]
 name = "vbase-env"
 version = "0.1.0"
 dependencies = [
