@@ -1,3 +1,5 @@
+pub mod crc32;
+
 pub use concurrent::*;
 
 #[cfg(feature = "shuttle")]
