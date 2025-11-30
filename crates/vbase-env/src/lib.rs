@@ -3,6 +3,10 @@
 use std::io::ErrorKind;
 use std::io::Result;
 
+mod mock;
+pub use mock::MockDir;
+pub use mock::MockEnv;
+
 mod local;
 pub use local::LocalDir;
 pub use local::LocalEnv;
