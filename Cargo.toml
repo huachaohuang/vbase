@@ -1,0 +1,23 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Huachao Huang <huachao.huang@gmail.com>"]
+homepage = "https://github.com/huachaohuang/vbase"
+repository = "https://github.com/huachaohuang/vbase"
+description = "A multi-model embedded database"
+rust-version = "1.91"
+
+[workspace.lints.rust]
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+[workspace.dependencies]
