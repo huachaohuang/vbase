@@ -1,14 +1,19 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+mod database;
+pub use database::Builder;
+pub use database::Database;
+
+mod core {
+    pub use vbase_core::Error;
+    pub use vbase_core::Result;
+    pub use vbase_core::WriteBatch;
+    pub use vbase_core::engine::Bucket;
+    pub use vbase_core::engine::Engine;
+    pub use vbase_core::options::Options;
+    pub use vbase_core::options::WriteOptions;
 }
+pub use core::*;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+pub mod tree {
+    pub use vbase_tree::Bucket;
+    pub use vbase_tree::Engine;
 }
