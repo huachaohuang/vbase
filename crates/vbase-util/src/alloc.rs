@@ -7,7 +7,7 @@ use std::ptr;
 
 /// A buffer allocated with a specific alignment.
 ///
-/// The pointer of this buffer is guaranteed to be aligned to `ALIGN`.
+/// The pointer of the buffer is guaranteed to be aligned to `ALIGN`.
 pub struct Buffer<const ALIGN: usize = 1> {
     ptr: *mut u8,
     size: usize,
