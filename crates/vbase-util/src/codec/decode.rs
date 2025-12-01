@@ -52,7 +52,7 @@ impl Take for UnsafeDecoder {
     fn take(&mut self, len: usize) -> *const u8 {
         let ptr = self.ptr;
         unsafe {
-            // SAFETY: this is not safe, but this is an unsafe decoder, so...
+            // SAFETY: this is not safe, but it is an unsafe decoder, so...
             self.ptr = self.ptr.add(len);
         };
         ptr

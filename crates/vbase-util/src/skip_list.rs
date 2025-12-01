@@ -24,8 +24,11 @@ pub const ALIGN: usize = align_of::<Node>();
 /// A lock-free skip list.
 ///
 /// This skip list is not supposed to be used as it is. It is designed
-/// with minimal assumptions about the data it stores. It provides unsafe
-/// interfaces for upper-level data structures.
+/// with minimal assumptions about the data it stores.
+///
+/// This skip list provides unsafe interfaces for upper-level data structures.
+/// It assumes that the generic types `K` and `V` used in different methods
+/// are compatible with each other.
 pub struct SkipList {
     head: Head,
     height: AtomicUsize,
@@ -299,7 +302,6 @@ impl Node {
     where
         K: Decode<'de> + Ord,
     {
-        // SAFETY: assume that `K` is compatible with the stored data.
         unsafe {
             let mut dec = UnsafeDecoder::new(self.data_ptr().as_ptr());
             let this = dec.decode::<K>();
@@ -313,7 +315,6 @@ impl Node {
         K: Decode<'de>,
         V: Decode<'de>,
     {
-        // SAFETY: assume that `K` and `V` are compatible with the stored data.
         unsafe {
             let mut dec = UnsafeDecoder::new(self.data_ptr().as_ptr());
             let k = dec.decode::<K>();

@@ -56,6 +56,7 @@ impl<const ALIGN: usize> BytesVec<ALIGN> {
     pub fn push(&mut self, value: u8) {
         self.reserve(1);
         unsafe {
+            // SAFETY: `self.buf` has at least `self.len + 1` bytes.
             self.as_mut_ptr().add(self.len).write(value);
             self.len += 1;
         }
@@ -74,6 +75,7 @@ impl<const ALIGN: usize> BytesVec<ALIGN> {
     pub fn extend_from_slice(&mut self, slice: &[u8]) {
         self.reserve(slice.len());
         unsafe {
+            // SAFETY: `self.buf` has at least `self.len + slice.len()` bytes.
             self.as_mut_ptr()
                 .add(self.len)
                 .copy_from_nonoverlapping(slice.as_ptr(), slice.len());

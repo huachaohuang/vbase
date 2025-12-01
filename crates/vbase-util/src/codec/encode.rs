@@ -99,7 +99,7 @@ impl Take for UnsafeEncoder {
     fn take(&mut self, len: usize) -> *mut u8 {
         let ptr = self.ptr;
         unsafe {
-            // SAFETY: this is not safe, but this is an unsafe encoder, so...
+            // SAFETY: this is not safe, but it is an unsafe encoder, so...
             self.ptr = self.ptr.add(len);
         }
         ptr
