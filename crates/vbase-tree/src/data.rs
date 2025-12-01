@@ -178,7 +178,7 @@ impl<'a> WriteBatch<'a> {
         Self { buf }
     }
 
-    pub(crate) fn add(&mut self, record: WriteRecord<'a>) {
+    pub(crate) fn add(&mut self, record: WriteRecord) {
         record.encode_to(self.buf);
     }
 }
