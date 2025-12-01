@@ -141,11 +141,6 @@ pub(crate) enum ValueKind {
     Tombstone = 3,
 }
 
-impl ValueKind {
-    /// An invalid value kind that can be used as a special marker.
-    pub(crate) const NONE: u8 = 0;
-}
-
 impl From<u8> for ValueKind {
     fn from(value: u8) -> Self {
         match value {
@@ -173,6 +168,94 @@ impl<'de> Decode<'de> for ValueKind {
     }
 }
 
+/// A batch of updates.
+pub(crate) struct WriteBatch<'a> {
+    buf: &'a mut Vec<u8>,
+}
+
+impl<'a> WriteBatch<'a> {
+    pub(crate) fn new(buf: &'a mut Vec<u8>) -> Self {
+        Self { buf }
+    }
+
+    pub(crate) fn add(&mut self, record: WriteRecord<'a>) {
+        record.encode_to(self.buf);
+    }
+}
+
+impl<'a> Drop for WriteBatch<'a> {
+    fn drop(&mut self) {
+        WriteRecord::encode_end(self.buf);
+    }
+}
+
+/// An iterator over a write batch.
+pub(crate) struct WriteBatchIter<'a> {
+    buf: &'a [u8],
+}
+
+impl<'a> WriteBatchIter<'a> {
+    pub(crate) fn new(buf: &'a [u8]) -> Self {
+        Self { buf }
+    }
+}
+
+impl<'a> Iterator for WriteBatchIter<'a> {
+    type Item = WriteRecord<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        WriteRecord::decode_from(&mut self.buf)
+    }
+}
+
+/// A record in the write batch.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub(crate) enum WriteRecord<'a> {
+    Value(&'a [u8], &'a [u8]),
+    Tombstone(&'a [u8]),
+}
+
+impl<'a> WriteRecord<'a> {
+    /// The end marker.
+    const END: u8 = 0;
+
+    fn encode_to<E: Encoder>(self, enc: &mut E) {
+        match self {
+            Self::Value(id, value) => {
+                enc.encode(ValueKind::Value);
+                enc.encode(id);
+                enc.encode(value);
+            }
+            Self::Tombstone(id) => {
+                enc.encode(ValueKind::Tombstone);
+                enc.encode(id);
+            }
+        }
+    }
+
+    fn encode_end<E: Encoder>(enc: &mut E) {
+        enc.put(Self::END);
+    }
+
+    fn decode_from<D: Decoder<'a>>(dec: &mut D) -> Option<Self> {
+        let kind = dec.pop();
+        if kind == Self::END {
+            return None;
+        }
+        match ValueKind::from(kind) {
+            ValueKind::Value => {
+                let id = dec.decode();
+                let value = dec.decode();
+                Some(Self::Value(id, value))
+            }
+            ValueKind::Tombstone => {
+                let id = dec.decode();
+                Some(Self::Tombstone(id))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use vbase_engine::util::codec;
@@ -191,5 +274,31 @@ mod tests {
     fn test_value() {
         codec::test_value(Value::Value(b"test"));
         codec::test_value(Value::Tombstone);
+    }
+
+    #[test]
+    fn test_write_batch() {
+        const K1: &[u8] = b"K1";
+        const K2: &[u8] = b"K2";
+
+        let mut buf = Vec::new();
+        {
+            let mut batch = WriteBatch::new(&mut buf);
+            batch.add(WriteRecord::Value(K1, K1));
+            batch.add(WriteRecord::Tombstone(K1));
+        }
+        {
+            let mut batch = WriteBatch::new(&mut buf);
+            batch.add(WriteRecord::Value(K2, K2));
+            batch.add(WriteRecord::Tombstone(K2));
+        }
+
+        let mut iter = WriteBatchIter::new(&buf);
+        assert_eq!(iter.next(), Some(WriteRecord::Value(K1, K1)));
+        assert_eq!(iter.next(), Some(WriteRecord::Tombstone(K1)));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), Some(WriteRecord::Value(K2, K2)));
+        assert_eq!(iter.next(), Some(WriteRecord::Tombstone(K2)));
+        assert_eq!(iter.next(), None);
     }
 }
