@@ -1,5 +1,6 @@
 pub mod alloc;
 pub mod arena;
+pub mod bytes;
 pub mod cell;
 pub mod codec;
 pub mod crc32;
