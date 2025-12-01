@@ -4,6 +4,7 @@ pub mod bytes;
 pub mod cell;
 pub mod codec;
 pub mod crc32;
+pub mod skip_list;
 pub mod spmc_queue;
 
 pub use concurrent::*;
