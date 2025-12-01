@@ -173,6 +173,7 @@ impl Core {
         let (lsn, handle) = {
             let mut guard = Guard {
                 journal: self.journal.lock().unwrap(),
+                // SAFETY: we have exclusive access to the submitter
                 submitter: unsafe { self.submitter.as_mut() },
             };
             let lsn = guard.submitter.next_lsn();

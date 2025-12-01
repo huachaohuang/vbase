@@ -88,6 +88,7 @@ macro_rules! impl_int {
         impl<'de> Decode<'de> for $t {
             fn decode_from<D: Decoder<'de>>(dec: &mut D) -> Self {
                 let bytes = dec.remove(size_of::<$t>());
+                // SAFETY: `bytes` is guaranteed to be the same size as `$t`.
                 <$t>::from_le_bytes(unsafe { *bytes.as_ptr().cast() })
             }
         }

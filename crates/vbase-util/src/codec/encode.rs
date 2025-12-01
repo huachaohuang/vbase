@@ -39,6 +39,7 @@ impl Take for &mut [u8] {
         assert!(self.len() >= len);
         let ptr = self.as_mut_ptr();
         unsafe {
+            // SAFETY: `ptr` is valid for at least `len` bytes.
             *self = slice::from_raw_parts_mut(ptr.add(len), self.len() - len);
         }
         ptr
@@ -69,7 +70,10 @@ impl BytesEncoder<'_> {
 impl Take for BytesEncoder<'_> {
     fn take(&mut self, len: usize) -> *mut u8 {
         assert!(self.buf.len() - self.len >= len);
-        let ptr = unsafe { self.buf.as_mut_ptr().add(self.len) };
+        let ptr = unsafe {
+            // SAFETY: `buf` is valid for at least `len` bytes.
+            self.buf.as_mut_ptr().add(self.len)
+        };
         self.len += len;
         ptr
     }
@@ -95,6 +99,7 @@ impl Take for UnsafeEncoder {
     fn take(&mut self, len: usize) -> *mut u8 {
         let ptr = self.ptr;
         unsafe {
+            // SAFETY: this is not safe, but this is an unsafe encoder, so...
             self.ptr = self.ptr.add(len);
         }
         ptr

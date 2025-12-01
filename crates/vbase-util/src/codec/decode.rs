@@ -25,6 +25,7 @@ impl Take for &[u8] {
         assert!(self.len() >= len);
         let ptr = self.as_ptr();
         unsafe {
+            // SAFETY: `ptr` is valid for at least `len` bytes.
             *self = slice::from_raw_parts(ptr.add(len), self.len() - len);
         }
         ptr
@@ -51,6 +52,7 @@ impl Take for UnsafeDecoder {
     fn take(&mut self, len: usize) -> *const u8 {
         let ptr = self.ptr;
         unsafe {
+            // SAFETY: this is not safe, but this is an unsafe decoder, so...
             self.ptr = self.ptr.add(len);
         };
         ptr
