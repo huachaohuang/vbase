@@ -4,7 +4,9 @@ mod error {
 pub use error::Error;
 pub use error::Result;
 
-mod bucket;
+mod engine;
+pub use engine::Bucket;
+pub use engine::Engine;
 
 mod data;
 mod file;
