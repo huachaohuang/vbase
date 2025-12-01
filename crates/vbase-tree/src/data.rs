@@ -254,6 +254,13 @@ impl<'a> WriteRecord<'a> {
             }
         }
     }
+
+    fn into_version(self, lsn: u64) -> (Vid<'a>, Value<'a>) {
+        match self {
+            Self::Value(id, value) => (Vid::new(id, lsn), Value::Value(value)),
+            Self::Tombstone(id) => (Vid::new(id, lsn), Value::Tombstone),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -280,25 +287,47 @@ mod tests {
     fn test_write_batch() {
         const K1: &[u8] = b"K1";
         const K2: &[u8] = b"K2";
+        let records = [
+            WriteRecord::Value(K1, K1),
+            WriteRecord::Tombstone(K1),
+            WriteRecord::Value(K2, K2),
+            WriteRecord::Tombstone(K2),
+        ];
 
         let mut buf = Vec::new();
         {
             let mut batch = WriteBatch::new(&mut buf);
-            batch.add(WriteRecord::Value(K1, K1));
-            batch.add(WriteRecord::Tombstone(K1));
-        }
-        {
+            batch.add(records[0]);
+            batch.add(records[1]);
+            drop(batch);
             let mut batch = WriteBatch::new(&mut buf);
-            batch.add(WriteRecord::Value(K2, K2));
-            batch.add(WriteRecord::Tombstone(K2));
+            batch.add(records[2]);
+            batch.add(records[3]);
         }
 
         let mut iter = WriteBatchIter::new(&buf);
-        assert_eq!(iter.next(), Some(WriteRecord::Value(K1, K1)));
-        assert_eq!(iter.next(), Some(WriteRecord::Tombstone(K1)));
+        assert_eq!(iter.next(), Some(records[0]));
+        assert_eq!(iter.next(), Some(records[1]));
         assert_eq!(iter.next(), None);
-        assert_eq!(iter.next(), Some(WriteRecord::Value(K2, K2)));
-        assert_eq!(iter.next(), Some(WriteRecord::Tombstone(K2)));
+        assert_eq!(iter.next(), Some(records[2]));
+        assert_eq!(iter.next(), Some(records[3]));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_write_record() {
+        const K: &[u8] = b"foo";
+        const V: &[u8] = b"bar";
+        const LSN: u64 = 42;
+        let record = WriteRecord::Value(K, V);
+        assert_eq!(
+            record.into_version(LSN),
+            (Vid::new(K, LSN), Value::Value(V))
+        );
+        let record = WriteRecord::Tombstone(K);
+        assert_eq!(
+            record.into_version(LSN),
+            (Vid::new(K, LSN), Value::Tombstone)
+        );
     }
 }
