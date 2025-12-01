@@ -23,6 +23,10 @@ mod concurrent {
             rng().next_u32()
         }
 
+        pub fn random_u64() -> u64 {
+            rng().next_u64()
+        }
+
         pub fn random_bool(p: f64) -> bool {
             rng().gen_bool(p)
         }
@@ -41,6 +45,10 @@ mod concurrent {
 
         pub fn random_u32() -> u32 {
             rng().next_u32()
+        }
+
+        pub fn random_u64() -> u64 {
+            rng().next_u64()
         }
 
         pub fn random_bool(p: f64) -> bool {

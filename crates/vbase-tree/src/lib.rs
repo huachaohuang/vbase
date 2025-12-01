@@ -11,3 +11,4 @@ pub use engine::Engine;
 mod data;
 mod file;
 mod manifest;
+mod memtable;
